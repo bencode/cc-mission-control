@@ -6,6 +6,10 @@ When you run a dozen Claude Code sessions across WezTerm workspaces and tabs, yo
 
 ![Status](https://img.shields.io/badge/status-experimental-orange)
 
+![CC Mission Control dashboard](docs/screenshot.png)
+
+> Live capture of a real session wall — 20 panes across 6 workspaces. The amber tile is blocked on a permission prompt and can be approved right from the dashboard. (Terminal contents blurred for this screenshot.)
+
 ## Features
 
 - **Live terminal thumbnails** — each pane rendered by xterm.js from WezTerm's ANSI screen dump, scaled down. What you see is exactly what the terminal shows, in color.
