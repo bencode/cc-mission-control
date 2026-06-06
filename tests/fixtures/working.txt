@@ -1,0 +1,15 @@
+⏺ I'll start by reading the existing implementation to understand the
+  current data flow.
+
+⏺ Read(src/parser.ts)
+  ⎿  Read 180 lines
+
+⏺ Bash(pnpm test --filter parser)
+  ⎿  Running…
+
+✻ Canoodling… (1m 8s · ↓ 2.4k tokens · esc to interrupt)
+
+───────────────────────────────────────────────────────────────────────────────
+❯
+───────────────────────────────────────────────────────────────────────────────
+  ➜ example-project git:(main) | tokens: 68.3k

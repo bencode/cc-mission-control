@@ -1,0 +1,12 @@
+⏺ Done. The refactor extracted three pure helpers into src/utils.ts and all
+  12 tests pass. The module is now 140 lines, down from 230.
+
+⏺ Bash(pnpm test)
+  ⎿  12 passed, 0 failed
+
+✻ Crunched for 41s · ↓ 3.1k tokens
+
+───────────────────────────────────────────────────────────────────────────────
+❯
+───────────────────────────────────────────────────────────────────────────────
+  ➜ example-project git:(main) | tokens: 42.0k
