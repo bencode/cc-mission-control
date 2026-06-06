@@ -3,7 +3,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 
 import { createPoller } from './poller.ts'
 import type { StreamEvent } from './types.ts'
-import { activatePane, bringToFront, sendText } from './wezterm.ts'
+import {
+  activatePane,
+  bringToFront,
+  clearFocusRequest,
+  sendText,
+  writeFocusRequest,
+} from './wezterm.ts'
 
 const PORT = Number(process.env.PORT ?? 6080)
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 1000)
@@ -46,7 +52,8 @@ const handleAction = async (req: IncomingMessage, res: ServerResponse, url: URL)
     return
   }
   if (action === 'focus') {
-    await activatePane(paneId)
+    await activatePane(paneId) // instant within the active workspace
+    await writeFocusRequest(paneId) // Lua bridge handles cross-workspace jumps
     await bringToFront()
   } else if (action === 'send') {
     const { text } = JSON.parse(await readBody(req)) as { text: string }
@@ -83,6 +90,7 @@ createServer((req, res) => {
     res.end()
   })
 }).listen(PORT, () => {
+  void clearFocusRequest()
   poller.start()
   console.log(`cc-mission-control listening on http://localhost:${PORT}`)
 })

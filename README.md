@@ -40,6 +40,21 @@ Environment variables:
 | `POLL_INTERVAL_MS` | `1000` | Screen capture interval |
 | `WEZTERM_BIN` | auto-detected | Path to the `wezterm` binary |
 
+## Cross-workspace focus (optional, recommended)
+
+`wezterm cli activate-pane` can only switch tabs within the active workspace — it cannot
+switch the GUI to another workspace. To make "Open in WezTerm" work across workspaces,
+load the bundled Lua bridge in your `wezterm.lua` (before `return config`):
+
+```lua
+dofile('/path/to/cc-mission-control/integrations/wezterm-focus.lua')
+```
+
+The dashboard writes focus requests to `~/.cache/cc-mission-control/focus-request`; the
+bridge picks them up on the next status tick (≤1s) and performs the full
+workspace + tab + pane jump from inside the GUI, where `SwitchToWorkspace` is available.
+Without the bridge, focus still works within the current workspace.
+
 ## How it works
 
 ```
@@ -68,6 +83,7 @@ pnpm typecheck
 ## Limitations
 
 - Only sees Claude Code sessions running inside WezTerm panes (not VS Code, web, or other terminals).
+- "Open in WezTerm" across workspaces requires the Lua bridge above; the WezTerm CLI alone cannot switch workspaces.
 - Status detection is heuristic — it parses what is on screen. New Claude Code UI wording may need a pattern update in `src/status.ts`.
 - The approve button sends the keystroke `1`, which selects "Yes" in current permission dialogs.
 

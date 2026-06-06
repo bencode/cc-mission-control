@@ -1,5 +1,8 @@
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -49,3 +52,20 @@ export const bringToFront = async (): Promise<void> => {
   if (process.platform !== 'darwin') return
   await execFileAsync('osascript', ['-e', 'tell application "WezTerm" to activate'])
 }
+
+/**
+ * `activate-pane` cannot switch the GUI's active workspace, so cross-workspace
+ * focus goes through a request file picked up by the optional Lua bridge
+ * (see integrations/wezterm-focus.lua) running inside WezTerm.
+ */
+const FOCUS_REQUEST_DIR = join(homedir(), '.cache', 'cc-mission-control')
+const FOCUS_REQUEST_FILE = join(FOCUS_REQUEST_DIR, 'focus-request')
+
+export const writeFocusRequest = async (paneId: number): Promise<void> => {
+  await mkdir(FOCUS_REQUEST_DIR, { recursive: true })
+  await writeFile(FOCUS_REQUEST_FILE, `${paneId}\n`)
+}
+
+/** Drop any request left over from a previous run (e.g. bridge not installed yet). */
+export const clearFocusRequest = (): Promise<void> =>
+  rm(FOCUS_REQUEST_FILE, { force: true })
