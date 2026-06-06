@@ -64,7 +64,8 @@ const handleStatic = async (res: ServerResponse, pathname: string): Promise<void
     res.writeHead(404).end()
     return
   }
-  res.writeHead(200, { 'content-type': file.type })
+  // no-cache = revalidate before reuse; keeps long-lived tabs from running stale bundles
+  res.writeHead(200, { 'content-type': file.type, 'cache-control': 'no-cache' })
   res.end(await readFile(new URL(`../${file.path}`, import.meta.url)))
 }
 
