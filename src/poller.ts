@@ -82,9 +82,13 @@ export const createPoller = (intervalMs: number): Poller => {
       return () => listeners.delete(listener)
     },
     start: () => {
+      if (timer !== undefined) return
       void safeTick()
       timer = setInterval(() => void safeTick(), intervalMs)
     },
-    stop: () => clearInterval(timer),
+    stop: () => {
+      clearInterval(timer)
+      timer = undefined
+    },
   }
 }

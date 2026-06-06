@@ -27,15 +27,24 @@ const sendEvent = (res: ServerResponse, event: StreamEvent): void => {
   res.write(`data: ${JSON.stringify(event)}\n\n`)
 }
 
+/** Poll only while someone is watching; pane states survive across pauses. */
+let clientCount = 0
+
 const handleStream = (req: IncomingMessage, res: ServerResponse): void => {
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache',
     connection: 'keep-alive',
   })
+  clientCount += 1
+  poller.start()
   sendEvent(res, poller.fullState())
   const unsubscribe = poller.subscribe((event) => sendEvent(res, event))
-  req.on('close', unsubscribe)
+  req.on('close', () => {
+    unsubscribe()
+    clientCount -= 1
+    if (clientCount === 0) poller.stop()
+  })
 }
 
 const readBody = async (req: IncomingMessage): Promise<string> => {
@@ -91,6 +100,5 @@ createServer((req, res) => {
   })
 }).listen(PORT, () => {
   void clearFocusRequest()
-  poller.start()
   console.log(`cc-mission-control listening on http://localhost:${PORT}`)
 })

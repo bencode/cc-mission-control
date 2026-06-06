@@ -9,6 +9,9 @@ type Entry = {
   snapshot: PaneSnapshot
   /** Latest full screen; stream events omit `screen` when unchanged. */
   lastScreen?: string
+  /** Tile skipped a render while hidden/offscreen and needs a catch-up. */
+  dirty: boolean
+  inViewport: boolean
 }
 
 const STATUS_ORDER: Record<SessionStatus, number> = { waiting: 0, working: 1, idle: 2, shell: 3 }
@@ -35,6 +38,23 @@ const openZoom = (paneId: number): void => {
   const entry = entries.get(paneId)
   if (entry) zoom.open(entry.snapshot, entry.lastScreen)
 }
+
+/** Rendering is gated: terminals only repaint when they can actually be seen. */
+const canRender = (entry: Entry): boolean => !document.hidden && entry.inViewport
+
+const flushEntry = (entry: Entry): void => {
+  entry.tile.update({ ...entry.snapshot, screen: entry.lastScreen })
+  entry.dirty = false
+}
+
+const viewport = new IntersectionObserver((observed) => {
+  for (const obs of observed) {
+    const entry = entries.get(Number((obs.target as HTMLElement).dataset.paneId))
+    if (!entry) continue
+    entry.inViewport = obs.isIntersecting
+    if (entry.dirty && canRender(entry)) flushEntry(entry)
+  }
+})
 
 const sectionFor = (workspace: string): HTMLElement => {
   const existing = sections.get(workspace)
@@ -69,9 +89,10 @@ const refreshSummary = (): void => {
 const upsert = (snapshot: PaneSnapshot): void => {
   const existing = entries.get(snapshot.paneId)
   if (existing) {
-    existing.tile.update(snapshot)
     existing.lastScreen = snapshot.screen ?? existing.lastScreen
     existing.snapshot = { ...snapshot, screen: undefined }
+    if (canRender(existing)) flushEntry(existing)
+    else existing.dirty = true
     return
   }
   const tile = createTile(snapshot, openZoom, sendToPane)
@@ -79,14 +100,18 @@ const upsert = (snapshot: PaneSnapshot): void => {
     tile,
     snapshot: { ...snapshot, screen: undefined },
     lastScreen: snapshot.screen,
+    dirty: false,
+    inViewport: false,
   })
   sectionFor(snapshot.workspace).querySelector('.tiles')?.appendChild(tile.root)
+  viewport.observe(tile.root)
 }
 
 const remove = (paneId: number): void => {
   const entry = entries.get(paneId)
   if (!entry) return
   if (zoom.openPaneId() === paneId) zoom.close()
+  viewport.unobserve(entry.tile.root)
   entry.tile.dispose()
   entry.tile.root.remove()
   entries.delete(paneId)
@@ -102,9 +127,18 @@ const handleEvent = (event: StreamEvent): void => {
   event.panes.forEach(upsert)
   event.panes.filter((p) => p.paneId === zoom.openPaneId()).forEach((p) => zoom.update(p))
   event.removed.forEach(remove)
-  new Set(event.panes.map((p) => p.workspace)).forEach(reorderSection)
+  if (!document.hidden) new Set(event.panes.map((p) => p.workspace)).forEach(reorderSection)
   refreshSummary()
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return
+  entries.forEach((entry) => {
+    if (entry.dirty && entry.inViewport) flushEntry(entry)
+  })
+  new Set([...entries.values()].map((e) => e.snapshot.workspace)).forEach(reorderSection)
+  refreshSummary()
+})
 
 const shellToggle = document.querySelector('#show-shells') as HTMLInputElement
 shellToggle.addEventListener('change', () => {

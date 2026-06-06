@@ -59,7 +59,8 @@ Without the bridge, focus still works within the current workspace.
 
 ```
 wezterm cli list ──┐
-wezterm cli get-text --escapes ──┤  poller (1s tick, per-pane content hash)
+wezterm cli get-text --escapes ──┤  poller (1s tick, per-pane content hash,
+                                 │          runs only while a client is connected)
                                  ▼
                        node:http server ── SSE ──▶ browser
                                  ▲                  └─ one xterm.js instance per pane,
