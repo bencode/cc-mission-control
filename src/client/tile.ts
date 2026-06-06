@@ -1,6 +1,7 @@
 import { Terminal } from '@xterm/xterm'
 
 import type { PaneSnapshot, SessionStatus } from '../types.ts'
+import { createActionButtons, displayTitle, el, type SendHandler } from './ui.ts'
 
 const TILE_WIDTH = 480
 
@@ -13,32 +14,6 @@ export type Tile = {
   root: HTMLElement
   update: (snapshot: PaneSnapshot) => void
   dispose: () => void
-}
-
-const displayTitle = (title: string): string => title.replace(/^[⠀-⣿✳]\s*/, '')
-
-const el = (tag: string, className: string): HTMLElement => {
-  const node = document.createElement(tag)
-  node.className = className
-  return node
-}
-
-const buildActions = (paneId: number, onSend: (paneId: number, text: string) => void): HTMLElement => {
-  const actions = el('span', 'actions')
-  const buttons: Array<[string, string, string]> = [
-    ['✓ Approve', '1', 'approve'],
-    ['✗ Esc', '', 'dismiss'],
-  ]
-  for (const [label, text, kind] of buttons) {
-    const button = el('button', `action ${kind}`)
-    button.textContent = label
-    button.addEventListener('click', (event) => {
-      event.stopPropagation()
-      onSend(paneId, text)
-    })
-    actions.appendChild(button)
-  }
-  return actions
 }
 
 /**
@@ -58,18 +33,18 @@ const fitToTile = (terminal: Terminal, screen: HTMLElement, wrap: HTMLElement): 
 
 export const createTile = (
   snapshot: PaneSnapshot,
-  onFocus: (paneId: number) => void,
-  onSend: (paneId: number, text: string) => void,
+  onZoom: (paneId: number) => void,
+  onSend: SendHandler,
 ): Tile => {
   const root = el('article', 'tile')
   root.dataset.paneId = String(snapshot.paneId)
-  root.addEventListener('click', () => onFocus(snapshot.paneId))
+  root.addEventListener('click', () => onZoom(snapshot.paneId))
 
   const header = el('header', 'tile-header')
   const light = el('span', 'light')
   const title = el('span', 'title')
   const status = el('span', 'status-label')
-  const actions = buildActions(snapshot.paneId, onSend)
+  const actions = createActionButtons(snapshot.paneId, onSend)
   header.append(light, title, status, actions)
 
   const wrap = el('div', 'screen-wrap')

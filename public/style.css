@@ -101,3 +101,30 @@ body:not(.show-shells) .status-shell { display: none; }
 
 .screen-wrap { overflow: hidden; }
 .screen { transform-origin: top left; }
+
+.zoom-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 8, 0.8);
+  backdrop-filter: blur(2px);
+}
+.zoom-backdrop.hidden { display: none; }
+
+.zoom-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+.zoom-panel.status-waiting { border-color: var(--waiting); }
+.zoom-panel .tile-header { padding: 9px 12px; cursor: default; }
+
+.zoom-controls { display: inline-flex; gap: 6px; }
+.action.focus { border-color: var(--working); color: var(--working); }
+
+.zoom-body { overflow: hidden; }

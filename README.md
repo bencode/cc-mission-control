@@ -14,8 +14,8 @@ When you run a dozen Claude Code sessions across WezTerm workspaces and tabs, yo
 
 - **Live terminal thumbnails** — each pane rendered by xterm.js from WezTerm's ANSI screen dump, scaled down. What you see is exactly what the terminal shows, in color.
 - **Status detection, zero config** — Claude Code already encodes its state in the pane title it sets (braille spinner = working, `✳` = idle). Permission dialogs and plan approvals are detected from the visible screen, shown as `waiting` with an amber pulse.
-- **Click to focus** — click a tile and WezTerm jumps to that pane and comes to the foreground.
-- **Quick approve** — sessions blocked on a permission prompt show `✓ Approve` / `✗ Esc` buttons right on the tile, so you can unblock them without switching over.
+- **Click to zoom** — click a tile to open the session near full size in a lightbox (live-updating), so you can read exactly what is on screen before acting. Jump to the pane in WezTerm from there, or press Escape to go back to the wall.
+- **Quick approve, with eyes open** — sessions blocked on a permission prompt show `✓ Approve` / `✗ Esc` buttons on both the tile and the zoom view: glance at the title for routine prompts, or zoom in to read the full dialog before approving.
 - **Workspace grouping & summary** — tiles grouped by WezTerm workspace; the top bar counts `working · waiting · idle · shell`, and the page title flags waiting sessions for your browser tab.
 
 ## Requirements
