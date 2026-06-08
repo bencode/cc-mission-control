@@ -68,6 +68,8 @@ body {
 
 .light { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile .title { cursor: zoom-in; }
+.tile .title:hover { text-decoration: underline; }
 .status-label { margin-left: auto; font-size: 11px; color: var(--muted); }
 
 .status-working .light { background: var(--working); animation: pulse 1.6s infinite; }
@@ -99,7 +101,9 @@ body:not(.show-shells) .status-shell { display: none; }
 .action.dismiss { border-color: var(--shell); color: var(--muted); }
 .action:hover { background: var(--border); }
 
-.screen-wrap { overflow: hidden; }
+/* min-height reserves space for header-only placeholders so off-screen tiles
+   stay off-screen (and unmounted); a mounted tile sets its exact height inline. */
+.screen-wrap { overflow: hidden; min-height: 220px; }
 .screen { transform-origin: top left; }
 
 .zoom-backdrop {

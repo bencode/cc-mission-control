@@ -1,3 +1,4 @@
+import { CanvasAddon } from '@xterm/addon-canvas'
 import { Terminal } from '@xterm/xterm'
 
 import type { PaneSnapshot } from '../types.ts'
@@ -33,13 +34,17 @@ const writeScreen = (terminal: Terminal, screen: string): void => {
 const fitToViewport = (terminal: Terminal, screen: HTMLElement, body: HTMLElement): void => {
   requestAnimationFrame(() => {
     const rendered = terminal.element?.querySelector<HTMLElement>('.xterm-screen')
-    if (!rendered || rendered.offsetWidth === 0) return
+    if (!rendered) return
+    // getBoundingClientRect: the canvas renderer sizes glyphs onto an inner
+    // canvas, so .xterm-screen's offsetWidth is unreliable; its rect is not.
+    const rect = rendered.getBoundingClientRect()
+    if (rect.width === 0) return
     const maxWidth = window.innerWidth - VIEWPORT_MARGIN * 2
     const maxHeight = window.innerHeight - VIEWPORT_MARGIN * 2 - HEADER_HEIGHT
-    const scale = Math.min(maxWidth / rendered.offsetWidth, maxHeight / rendered.offsetHeight, 1)
+    const scale = Math.min(maxWidth / rect.width, maxHeight / rect.height, 1)
     screen.style.transform = `scale(${scale})`
-    body.style.width = `${Math.round(rendered.offsetWidth * scale)}px`
-    body.style.height = `${Math.round(rendered.offsetHeight * scale)}px`
+    body.style.width = `${Math.round(rect.width * scale)}px`
+    body.style.height = `${Math.round(rect.height * scale)}px`
   })
 }
 
@@ -114,6 +119,7 @@ export const createZoom = (handlers: ZoomHandlers): Zoom => {
     screen.replaceChildren()
     screen.style.transform = ''
     terminal.open(screen)
+    terminal.loadAddon(new CanvasAddon()) // after open(), before first write()
     if (lastScreen !== undefined) writeScreen(terminal, lastScreen)
     buildHeader(snapshot)
     applyState(snapshot)

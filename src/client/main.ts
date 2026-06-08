@@ -9,8 +9,6 @@ type Entry = {
   snapshot: PaneSnapshot
   /** Latest full screen; stream events omit `screen` when unchanged. */
   lastScreen?: string
-  /** Tile skipped a render while hidden/offscreen and needs a catch-up. */
-  dirty: boolean
   inViewport: boolean
 }
 
@@ -39,22 +37,32 @@ const openZoom = (paneId: number): void => {
   if (entry) zoom.open(entry.snapshot, entry.lastScreen)
 }
 
-/** Rendering is gated: terminals only repaint when they can actually be seen. */
-const canRender = (entry: Entry): boolean => !document.hidden && entry.inViewport
-
-const flushEntry = (entry: Entry): void => {
-  entry.tile.update({ ...entry.snapshot, screen: entry.lastScreen })
-  entry.dirty = false
+/**
+ * Mounting is gated to the viewport: only tiles that can actually be seen own a
+ * live xterm terminal (and its costly canvas compositor layers). Off-screen tiles
+ * keep a header-only placeholder. The latest screen lives in `lastScreen`, so a
+ * tile always mounts with current content.
+ */
+const mountEntry = (entry: Entry): void => {
+  if (!entry.tile.isMounted()) entry.tile.mount({ ...entry.snapshot, screen: entry.lastScreen })
 }
 
-const viewport = new IntersectionObserver((observed) => {
-  for (const obs of observed) {
-    const entry = entries.get(Number((obs.target as HTMLElement).dataset.paneId))
-    if (!entry) continue
-    entry.inViewport = obs.isIntersecting
-    if (entry.dirty && canRender(entry)) flushEntry(entry)
-  }
-})
+// rootMargin pre-mounts a buffer around the viewport so scrolling doesn't flicker.
+const viewport = new IntersectionObserver(
+  (observed) => {
+    for (const obs of observed) {
+      const entry = entries.get(Number((obs.target as HTMLElement).dataset.paneId))
+      if (!entry) continue
+      entry.inViewport = obs.isIntersecting
+      if (obs.isIntersecting) {
+        if (!document.hidden) mountEntry(entry)
+      } else {
+        entry.tile.unmount()
+      }
+    }
+  },
+  { rootMargin: '300px' },
+)
 
 const sectionFor = (workspace: string): HTMLElement => {
   const existing = sections.get(workspace)
@@ -91,20 +99,19 @@ const upsert = (snapshot: PaneSnapshot): void => {
   if (existing) {
     existing.lastScreen = snapshot.screen ?? existing.lastScreen
     existing.snapshot = { ...snapshot, screen: undefined }
-    if (canRender(existing)) flushEntry(existing)
-    else existing.dirty = true
+    // update() refreshes the header always and the screen only when mounted.
+    existing.tile.update({ ...existing.snapshot, screen: existing.lastScreen })
     return
   }
-  const tile = createTile(snapshot, openZoom, sendToPane)
+  const tile = createTile(snapshot, { onZoom: openZoom, onFocus: focusPane, onSend: sendToPane })
   entries.set(snapshot.paneId, {
     tile,
     snapshot: { ...snapshot, screen: undefined },
     lastScreen: snapshot.screen,
-    dirty: false,
     inViewport: false,
   })
   sectionFor(snapshot.workspace).querySelector('.tiles')?.appendChild(tile.root)
-  viewport.observe(tile.root)
+  viewport.observe(tile.root) // mounts lazily once it enters the viewport
 }
 
 const remove = (paneId: number): void => {
@@ -134,7 +141,7 @@ const handleEvent = (event: StreamEvent): void => {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return
   entries.forEach((entry) => {
-    if (entry.dirty && entry.inViewport) flushEntry(entry)
+    if (entry.inViewport) mountEntry(entry)
   })
   new Set([...entries.values()].map((e) => e.snapshot.workspace)).forEach(reorderSection)
   refreshSummary()
