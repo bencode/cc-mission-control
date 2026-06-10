@@ -23,6 +23,9 @@ const STATIC_FILES: Record<string, { path: string; type: string }> = {
 
 const poller = createPoller(POLL_INTERVAL_MS)
 
+/** Named heartbeat so the client can tell a live-but-quiet stream from a dead one. */
+const HEARTBEAT_MS = 10_000
+
 const sendEvent = (res: ServerResponse, event: StreamEvent): void => {
   res.write(`data: ${JSON.stringify(event)}\n\n`)
 }
@@ -40,7 +43,9 @@ const handleStream = (req: IncomingMessage, res: ServerResponse): void => {
   poller.start()
   sendEvent(res, poller.fullState())
   const unsubscribe = poller.subscribe((event) => sendEvent(res, event))
+  const heartbeat = setInterval(() => res.write('event: ping\ndata: 1\n\n'), HEARTBEAT_MS)
   req.on('close', () => {
+    clearInterval(heartbeat)
     unsubscribe()
     clientCount -= 1
     if (clientCount === 0) poller.stop()

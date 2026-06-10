@@ -165,5 +165,47 @@ document.addEventListener('fullscreenchange', () => {
   fullscreenToggle.title = on ? '退出全屏' : '全屏'
 })
 
-const stream = new EventSource('/api/stream')
-stream.onmessage = (message) => handleEvent(JSON.parse(message.data) as StreamEvent)
+/**
+ * The stream must survive drops (server restart, sleep, proxy idle-out): a
+ * silently frozen monitoring wall is worse than no wall. EventSource already
+ * auto-reconnects on most drops; we only add a visible status and a watchdog
+ * that rebuilds the EventSource if it ever gets stuck (readyState CLOSED) or
+ * goes half-open. The server's `ping` keeps `lastMessageAt` fresh during quiet
+ * periods so the watchdog doesn't fire on a healthy-but-idle connection.
+ */
+const STALE_MS = 25_000
+const conn = document.querySelector('#conn') as HTMLElement
+let stream: EventSource
+let lastMessageAt = Date.now()
+
+const setStatus = (live: boolean): void => {
+  document.body.classList.toggle('disconnected', !live)
+  conn.title = live ? 'live' : 'reconnecting…'
+}
+
+const markLive = (): void => {
+  lastMessageAt = Date.now()
+  setStatus(true)
+}
+
+const connect = (): void => {
+  stream = new EventSource('/api/stream')
+  stream.onopen = markLive
+  stream.addEventListener('ping', markLive)
+  stream.onmessage = (message) => {
+    markLive()
+    handleEvent(JSON.parse(message.data) as StreamEvent)
+  }
+  stream.onerror = () => setStatus(false) // EventSource retries itself; just surface it
+}
+
+// Backstop: if no event/ping for too long, the native reconnect is stuck — rebuild it.
+setInterval(() => {
+  if (Date.now() - lastMessageAt > STALE_MS) {
+    setStatus(false)
+    stream.close()
+    connect()
+  }
+}, 5000)
+
+connect()

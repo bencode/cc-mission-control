@@ -32,6 +32,16 @@ body {
 }
 
 #topbar h1 { margin: 0; font-size: 14px; letter-spacing: 1px; }
+#conn {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--idle);
+  align-self: center;
+}
+/* disconnected: amber pulse + dim the board so stale data never reads as live */
+body.disconnected #conn { background: var(--waiting); animation: blink 0.8s infinite; }
+body.disconnected #board { opacity: 0.55; transition: opacity 0.2s; }
 #summary { color: var(--muted); }
 #shell-filter { margin-left: auto; color: var(--muted); cursor: pointer; }
 #fullscreen-toggle {
