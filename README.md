@@ -8,7 +8,7 @@ When you run a dozen Claude Code sessions across WezTerm workspaces and tabs, yo
 
 ![CC Mission Control dashboard](docs/screenshot.png)
 
-> Live capture of a real session wall — 20 panes across 6 workspaces. The amber tile is blocked on a permission prompt and can be approved right from the dashboard. (Terminal contents blurred for this screenshot.)
+> Live capture of a real session wall, grouped by workspace. The violet ring marks the pane currently focused in WezTerm; waiting sessions pulse amber with an Approve button right on the tile. (Terminal contents blurred for this screenshot.)
 
 ## Features
 
