@@ -77,6 +77,7 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
   let terminal: Terminal | null = null
   let size = { cols: snapshot.cols, rows: snapshot.rows }
   let currentStatus: SessionStatus | undefined
+  let currentActive: boolean | undefined
 
   const writeScreen = (text: string): void => {
     terminal?.reset()
@@ -84,9 +85,11 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
   }
 
   const renderHeader = (next: PaneSnapshot): void => {
-    if (next.status !== currentStatus) {
+    const active = next.active ?? false
+    if (next.status !== currentStatus || active !== currentActive) {
       currentStatus = next.status
-      root.className = `tile status-${next.status}`
+      currentActive = active
+      root.className = `tile status-${next.status}${active ? ' active' : ''}`
       status.textContent = next.status
     }
     title.textContent = displayTitle(next.title)

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { detectStatus, stripAnsi } from './status.ts'
 import type { PaneSnapshot, StreamEvent } from './types.ts'
-import { getScreen, listPanes, type WeztermPane } from './wezterm.ts'
+import { focusedPaneId, getScreen, listPanes, type WeztermPane } from './wezterm.ts'
 
 type PaneState = { hash: string; snapshot: PaneSnapshot }
 
@@ -42,14 +42,16 @@ export const createPoller = (intervalMs: number): Poller => {
   let ticking = false
 
   const tick = async (): Promise<void> => {
-    const panes = await listPanes()
+    const [panes, focusedId] = await Promise.all([listPanes(), focusedPaneId()])
     const captured = (await Promise.all(panes.map(capturePane))).filter((s) => s !== null)
 
     const changed: PaneSnapshot[] = []
     const seen = new Set<number>()
-    for (const snapshot of captured) {
-      seen.add(snapshot.paneId)
-      const hash = hashOf(`${snapshot.title}\0${snapshot.screen ?? ''}`)
+    for (const captured0 of captured) {
+      seen.add(captured0.paneId)
+      const snapshot: PaneSnapshot = { ...captured0, active: captured0.paneId === focusedId }
+      // active is in the hash so focus moves repaint even when title/screen are unchanged
+      const hash = hashOf(`${snapshot.title}\0${snapshot.active}\0${snapshot.screen ?? ''}`)
       if (states.get(snapshot.paneId)?.hash === hash) continue
       states.set(snapshot.paneId, { hash, snapshot })
       changed.push(snapshot)

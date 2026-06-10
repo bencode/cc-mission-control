@@ -8,6 +8,7 @@
   --waiting: #e3a008;
   --idle: #3fb950;
   --shell: #4a5260;
+  --current: #a371f7;
 }
 
 * { box-sizing: border-box; }
@@ -78,6 +79,8 @@ body.disconnected #board { opacity: 0.55; transition: opacity 0.2s; }
   transition: border-color 0.15s;
 }
 .tile:hover { border-color: var(--muted); }
+/* the single pane currently focused in WezTerm — a glow ring over any status border */
+.tile.active { box-shadow: 0 0 0 2px var(--current), 0 0 14px 1px var(--current); }
 
 .tile-header {
   display: flex;

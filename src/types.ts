@@ -8,6 +8,8 @@ export type PaneSnapshot = {
   cols: number
   rows: number
   status: SessionStatus
+  /** True for the single pane currently focused in WezTerm. */
+  active?: boolean
   /** Full-screen ANSI dump. Present only when content changed since the last event. */
   screen?: string
 }

@@ -35,6 +35,23 @@ export type WeztermPane = {
 export const listPanes = async (): Promise<WeztermPane[]> =>
   JSON.parse(await run(['cli', 'list', '--format', 'json'])) as WeztermPane[]
 
+type WeztermClient = { focused_pane_id: number; idle_time: { secs: number } }
+
+/**
+ * The single pane the user is currently focused on. `cli list` marks every
+ * tab's active pane, so it can't tell us this; `list-clients` can. With several
+ * clients (multiple GUI windows), the least-idle one is the live one.
+ */
+export const focusedPaneId = async (): Promise<number | null> => {
+  try {
+    const clients = JSON.parse(await run(['cli', 'list-clients', '--format', 'json'])) as WeztermClient[]
+    if (clients.length === 0) return null
+    return clients.reduce((a, b) => (b.idle_time.secs < a.idle_time.secs ? b : a)).focused_pane_id
+  } catch {
+    return null // older wezterm without list-clients, or no GUI client attached
+  }
+}
+
 /** Capture the visible screen of a pane, including ANSI color escapes. */
 export const getScreen = (paneId: number): Promise<string> =>
   run(['cli', 'get-text', '--pane-id', String(paneId), '--escapes'])
