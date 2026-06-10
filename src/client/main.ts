@@ -152,5 +152,18 @@ shellToggle.addEventListener('change', () => {
   document.body.classList.toggle('show-shells', shellToggle.checked)
 })
 
+const fullscreenToggle = document.querySelector('#fullscreen-toggle') as HTMLButtonElement
+fullscreenToggle.addEventListener('click', () => {
+  const action = document.fullscreenElement
+    ? document.exitFullscreen()
+    : document.documentElement.requestFullscreen()
+  action.catch(() => {}) // fullscreen may be blocked by policy; ignore
+})
+document.addEventListener('fullscreenchange', () => {
+  const on = document.fullscreenElement !== null
+  fullscreenToggle.textContent = on ? '⤢' : '⛶'
+  fullscreenToggle.title = on ? '退出全屏' : '全屏'
+})
+
 const stream = new EventSource('/api/stream')
 stream.onmessage = (message) => handleEvent(JSON.parse(message.data) as StreamEvent)
