@@ -5,6 +5,10 @@ import type { PaneSnapshot, SessionStatus } from '../types.ts'
 import { createActionButtons, displayTitle, el, type SendHandler } from './ui.ts'
 
 const TILE_WIDTH = 480
+// Tiles are scaled down to TILE_WIDTH anyway, so render at a small font: the
+// canvas backing store scales with fontSize, making mounts and compositing
+// cheaper. The zoom view renders its own terminal at a readable size.
+const TILE_FONT_SIZE = 9
 
 const TERMINAL_THEME = {
   background: '#0d1117',
@@ -101,7 +105,7 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
     terminal = new Terminal({
       cols: next.cols,
       rows: next.rows,
-      fontSize: 12,
+      fontSize: TILE_FONT_SIZE,
       scrollback: 0,
       disableStdin: true,
       cursorBlink: false,

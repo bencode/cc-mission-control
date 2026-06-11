@@ -47,6 +47,35 @@ const mountEntry = (entry: Entry): void => {
   if (!entry.tile.isMounted()) entry.tile.mount({ ...entry.snapshot, screen: entry.lastScreen })
 }
 
+/**
+ * Mounting a terminal (xterm + canvas + first full-screen render) costs ~50ms,
+ * so doing it synchronously in the observer makes scrolling stutter. Instead we
+ * defer: nothing mounts while scrolling (placeholders fly by), and once activity
+ * settles we mount one tile per frame, recomputing the work from live state each
+ * frame so an entry that scrolled back out is simply skipped.
+ */
+let drainHandle = 0
+let debounceHandle = 0
+
+const drainStep = (): void => {
+  drainHandle = 0
+  if (document.hidden) return
+  const next = [...entries.values()].find((e) => e.inViewport && !e.tile.isMounted())
+  if (!next) return
+  mountEntry(next)
+  drainHandle = requestAnimationFrame(drainStep)
+}
+
+const scheduleDrain = (): void => {
+  if (drainHandle === 0) drainHandle = requestAnimationFrame(drainStep)
+}
+
+/** Debounced so a continuous scroll keeps resetting it — mounts only after it stops. */
+const queueMountPass = (): void => {
+  clearTimeout(debounceHandle)
+  debounceHandle = window.setTimeout(scheduleDrain, 120)
+}
+
 // rootMargin pre-mounts a buffer around the viewport so scrolling doesn't flicker.
 const viewport = new IntersectionObserver(
   (observed) => {
@@ -54,12 +83,9 @@ const viewport = new IntersectionObserver(
       const entry = entries.get(Number((obs.target as HTMLElement).dataset.paneId))
       if (!entry) continue
       entry.inViewport = obs.isIntersecting
-      if (obs.isIntersecting) {
-        if (!document.hidden) mountEntry(entry)
-      } else {
-        entry.tile.unmount()
-      }
+      if (!obs.isIntersecting) entry.tile.unmount() // cheap; mounting is deferred below
     }
+    queueMountPass()
   },
   { rootMargin: '300px' },
 )
@@ -130,19 +156,37 @@ const remove = (paneId: number): void => {
   }
 }
 
+/**
+ * Follow WezTerm focus: scroll the active tile into view only when *which* pane
+ * is active changes. Re-sends of the same active pane (a working pane streaming
+ * new screens) don't scroll, so browsing the wall while focused stays undisturbed.
+ * The first event only records the active id (no scroll on page load).
+ */
+let activePaneId: number | undefined
+let scrollFollowArmed = false
+
+const followActive = (event: StreamEvent): void => {
+  const active = event.panes.find((p) => p.active)
+  if (!active || active.paneId === activePaneId) return
+  if (scrollFollowArmed && !document.hidden) {
+    entries.get(active.paneId)?.tile.root.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+  activePaneId = active.paneId
+}
+
 const handleEvent = (event: StreamEvent): void => {
   event.panes.forEach(upsert)
   event.panes.filter((p) => p.paneId === zoom.openPaneId()).forEach((p) => zoom.update(p))
   event.removed.forEach(remove)
   if (!document.hidden) new Set(event.panes.map((p) => p.workspace)).forEach(reorderSection)
+  followActive(event)
+  scrollFollowArmed = true
   refreshSummary()
 }
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return
-  entries.forEach((entry) => {
-    if (entry.inViewport) mountEntry(entry)
-  })
+  scheduleDrain() // mount visible tiles that were left as placeholders while hidden
   new Set([...entries.values()].map((e) => e.snapshot.workspace)).forEach(reorderSection)
   refreshSummary()
 })
