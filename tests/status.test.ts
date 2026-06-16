@@ -20,6 +20,19 @@ test('waiting: ✳ title with a permission dialog on screen', () => {
   assert.equal(detectStatus('✳ some-task', fixture('waiting.txt')), 'waiting')
 })
 
+test('idle: prose with a numbered list but no selection cursor is not waiting', () => {
+  const reply = [
+    'Do you want to:',
+    '1. Log in + publish now, or',
+    '2. Have me hold while you sort npm auth?',
+    '',
+    '───────────────────────────────',
+    '❯',
+    '───────────────────────────────',
+  ].join('\n')
+  assert.equal(detectStatus('✳ fix-queued-message-consumption', reply), 'idle')
+})
+
 test('shell: non-Claude titles', () => {
   assert.equal(detectStatus('../work/example-project', fixture('shell.txt')), 'shell')
   assert.equal(detectStatus('pnpm', ''), 'shell')

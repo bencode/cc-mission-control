@@ -23,15 +23,21 @@ const ANSI_PATTERN = new RegExp(
 export const stripAnsi = (text: string): string => text.replace(ANSI_PATTERN, '')
 
 /**
- * Patterns that appear on screen when Claude Code is blocked on user input:
- * permission dialogs, plan approval, and AskUserQuestion all render a
- * numbered option list with a selection cursor.
+ * When Claude Code is blocked on user input — permission dialogs, plan
+ * approval, AskUserQuestion — it renders a numbered option list with the `❯`
+ * selection cursor on the active option. That cursor is the reliable signal:
+ * prose Claude types into a finished reply ("Do you want me to… 1. … 2. …")
+ * has no cursor, so matching it avoids reading a completed turn as "waiting"
+ * just because its conversational text is still on screen.
  */
-const WAITING_PATTERNS = [
-  /❯\s+1\./,
-  /Do you want/,
-  /Would you like/,
-]
+const WAITING_CURSOR = /❯\s+\d+\./
+
+// The live dialog is anchored to the bottom of the pane; a resolved one scrolls
+// up and collapses. Scanning only the tail keeps a stale cursor above from
+// reading as waiting.
+const TAIL_LINES = 30
+
+const tail = (text: string): string => text.split('\n').slice(-TAIL_LINES).join('\n')
 
 const isBrailleSpinner = (char: string): boolean => {
   const code = char.codePointAt(0) ?? 0
@@ -48,5 +54,5 @@ export const isClaudePane = (title: string): boolean =>
 export const detectStatus = (title: string, screenText: string): SessionStatus => {
   if (isBrailleSpinner(title.charAt(0))) return 'working'
   if (!title.startsWith(IDLE_MARKER)) return 'shell'
-  return WAITING_PATTERNS.some((p) => p.test(screenText)) ? 'waiting' : 'idle'
+  return WAITING_CURSOR.test(tail(screenText)) ? 'waiting' : 'idle'
 }
