@@ -45,6 +45,18 @@ body.disconnected #conn { background: var(--waiting); animation: blink 0.8s infi
 body.disconnected #board { opacity: 0.55; transition: opacity 0.2s; }
 #summary { color: var(--muted); }
 #shell-filter { margin-left: auto; color: var(--muted); cursor: pointer; }
+#cols-filter { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+#cols-select {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  line-height: 1;
+  padding: 1px 4px;
+  cursor: pointer;
+}
+#cols-select:hover { border-color: var(--muted); }
 #fullscreen-toggle {
   background: none;
   border: 1px solid var(--border);
@@ -67,10 +79,16 @@ body.disconnected #board { opacity: 0.55; transition: opacity 0.2s; }
   color: var(--muted);
 }
 
-.tiles { display: flex; flex-wrap: wrap; gap: 12px; }
+/* Cards stretch to fill the row: a fixed column count (set per machine via
+   --cols on #board) divides the width evenly, leaving no empty gutter on the
+   right. minmax(0, …) lets columns shrink below content width. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+  gap: 12px;
+}
 
 .tile {
-  width: 480px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;

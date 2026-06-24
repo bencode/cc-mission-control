@@ -4,9 +4,8 @@ import { Terminal } from '@xterm/xterm'
 import type { PaneSnapshot, SessionStatus } from '../types.ts'
 import { createActionButtons, displayTitle, el, type SendHandler } from './ui.ts'
 
-const TILE_WIDTH = 480
-// Tiles are scaled down to TILE_WIDTH anyway, so render at a small font: the
-// canvas backing store scales with fontSize, making mounts and compositing
+// Tiles are scaled down to their card width anyway, so render at a small font:
+// the canvas backing store scales with fontSize, making mounts and compositing
 // cheaper. The zoom view renders its own terminal at a readable size.
 const TILE_FONT_SIZE = 9
 
@@ -23,6 +22,8 @@ export type Tile = {
   mount: (snapshot: PaneSnapshot) => void
   /** Dispose the terminal to free its canvas compositor layers. */
   unmount: () => void
+  /** Re-scale to the current card width (after a column-count or window resize). */
+  refit: () => void
   isMounted: () => boolean
   dispose: () => void
 }
@@ -37,6 +38,8 @@ export type TileHandlers = {
  * Scale the rendered terminal down so its full width fits the tile.
  * Measures the inner `.xterm-screen` element: it carries the true pixel size
  * (cols × cell width), while the outer element is clamped by the container.
+ * The target width is the card's own width (`wrap.clientWidth`), so tiles
+ * re-fit to whatever the grid hands them as the column count or window changes.
  */
 const fitToTile = (terminal: Terminal, screen: HTMLElement, wrap: HTMLElement): void => {
   // Clear any prior transform so the measured rect is the unscaled render size.
@@ -47,8 +50,9 @@ const fitToTile = (terminal: Terminal, screen: HTMLElement, wrap: HTMLElement): 
     // getBoundingClientRect: the canvas renderer no longer sizes .xterm-screen
     // via offsetWidth, but its layout box still reflects cols × cellWidth.
     const rect = rendered.getBoundingClientRect()
-    if (rect.width === 0) return
-    const scale = TILE_WIDTH / rect.width
+    const target = wrap.clientWidth
+    if (rect.width === 0 || target === 0) return
+    const scale = target / rect.width
     screen.style.transform = `scale(${scale})`
     wrap.style.height = `${Math.round(rect.height * scale)}px`
   })
@@ -136,6 +140,10 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
     if (next.screen !== undefined) writeScreen(next.screen)
   }
 
+  const refit = (): void => {
+    if (terminal) fitToTile(terminal, screen, wrap)
+  }
+
   renderHeader(snapshot)
-  return { root, update, mount, unmount, isMounted: () => terminal !== null, dispose: () => terminal?.dispose() }
+  return { root, update, mount, unmount, refit, isMounted: () => terminal !== null, dispose: () => terminal?.dispose() }
 }

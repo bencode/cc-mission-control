@@ -196,6 +196,29 @@ shellToggle.addEventListener('change', () => {
   document.body.classList.toggle('show-shells', shellToggle.checked)
 })
 
+// Column count is a per-machine preference: the column-stretch grid divides the
+// width evenly, and tiles re-scale to the new card width. Stored in localStorage
+// so each browser/screen keeps its own choice.
+const refitAll = (): void => entries.forEach((entry) => entry.tile.refit())
+
+const colsSelect = document.querySelector('#cols-select') as HTMLSelectElement
+const applyCols = (value: string): void => board.style.setProperty('--cols', value)
+colsSelect.value = localStorage.getItem('cols') ?? '3'
+applyCols(colsSelect.value)
+colsSelect.addEventListener('change', () => {
+  localStorage.setItem('cols', colsSelect.value)
+  applyCols(colsSelect.value)
+  refitAll()
+})
+
+// Card width also changes when the window resizes (or enters/exits fullscreen);
+// debounce a re-fit so content stays crisp without thrashing during a drag.
+let resizeHandle = 0
+window.addEventListener('resize', () => {
+  clearTimeout(resizeHandle)
+  resizeHandle = window.setTimeout(refitAll, 150)
+})
+
 const fullscreenToggle = document.querySelector('#fullscreen-toggle') as HTMLButtonElement
 fullscreenToggle.addEventListener('click', () => {
   const action = document.fullscreenElement
