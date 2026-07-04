@@ -64,6 +64,11 @@ export const sendText = async (paneId: number, text: string): Promise<void> => {
   await run(['cli', 'send-text', '--pane-id', String(paneId), '--no-paste', '--', text])
 }
 
+/** Terminate a pane and everything running in it; the poller drops it next tick. */
+export const killPane = async (paneId: number): Promise<void> => {
+  await run(['cli', 'kill-pane', '--pane-id', String(paneId)])
+}
+
 /** Bring the WezTerm app window to the foreground (macOS only; no-op elsewhere). */
 export const bringToFront = async (): Promise<void> => {
   if (process.platform !== 'darwin') return

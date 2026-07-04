@@ -2,7 +2,7 @@ import { CanvasAddon } from '@xterm/addon-canvas'
 import { Terminal } from '@xterm/xterm'
 
 import type { PaneSnapshot, SessionStatus } from '../types.ts'
-import { createActionButtons, displayTitle, el, type SendHandler } from './ui.ts'
+import { createActionButtons, createCloseButton, displayTitle, el, type CloseHandler, type SendHandler } from './ui.ts'
 
 // Tiles are scaled down to their card width anyway, so render at a small font:
 // the canvas backing store scales with fontSize, making mounts and compositing
@@ -32,6 +32,7 @@ export type TileHandlers = {
   onZoom: (paneId: number) => void
   onFocus: (paneId: number) => void
   onSend: SendHandler
+  onClose: CloseHandler
 }
 
 /**
@@ -74,7 +75,8 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
   })
   const status = el('span', 'status-label')
   const actions = createActionButtons(snapshot.paneId, handlers.onSend)
-  header.append(light, title, status, actions)
+  const closeButton = createCloseButton(snapshot.paneId, handlers.onClose)
+  header.append(light, title, status, actions, closeButton)
 
   const wrap = el('div', 'screen-wrap')
   const screen = el('div', 'screen')

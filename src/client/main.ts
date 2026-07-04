@@ -29,8 +29,9 @@ const post = (path: string, body?: unknown): void => {
 
 const focusPane = (paneId: number): void => post(`/api/focus/${paneId}`)
 const sendToPane = (paneId: number, text: string): void => post(`/api/send/${paneId}`, { text })
+const closePane = (paneId: number): void => post(`/api/close/${paneId}`)
 
-const zoom = createZoom({ onFocus: focusPane, onSend: sendToPane })
+const zoom = createZoom({ onFocus: focusPane, onSend: sendToPane, onClose: closePane })
 
 const openZoom = (paneId: number): void => {
   const entry = entries.get(paneId)
@@ -129,7 +130,7 @@ const upsert = (snapshot: PaneSnapshot): void => {
     existing.tile.update({ ...existing.snapshot, screen: existing.lastScreen })
     return
   }
-  const tile = createTile(snapshot, { onZoom: openZoom, onFocus: focusPane, onSend: sendToPane })
+  const tile = createTile(snapshot, { onZoom: openZoom, onFocus: focusPane, onSend: sendToPane, onClose: closePane })
   entries.set(snapshot.paneId, {
     tile,
     snapshot: { ...snapshot, screen: undefined },
