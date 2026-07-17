@@ -1,27 +1,39 @@
 import { createHash } from 'node:crypto'
 
-import { detectStatus, stripAnsi } from './status.ts'
-import type { PaneSnapshot, StreamEvent } from './types.ts'
+import { listAgentProcesses } from './processes.ts'
+import { detectAgent, detectStatus, stripAnsi } from './status.ts'
+import type { AgentKind, PaneSnapshot, StreamEvent } from './types.ts'
 import { focusedPaneId, getScreen, listPanes, type WeztermPane } from './wezterm.ts'
 
 type PaneState = { hash: string; snapshot: PaneSnapshot }
 
 const hashOf = (text: string): string => createHash('sha1').update(text).digest('hex')
 
-const toSnapshot = (pane: WeztermPane, screen: string): PaneSnapshot => ({
-  paneId: pane.pane_id,
-  workspace: pane.workspace,
-  title: pane.title,
-  cwd: pane.cwd.replace(/^file:\/\/[^/]*/, ''),
-  cols: pane.size.cols,
-  rows: pane.size.rows,
-  status: detectStatus(pane.title, stripAnsi(screen)),
-  screen,
-})
+const toSnapshot = (
+  pane: WeztermPane,
+  screen: string,
+  processAgent?: Exclude<AgentKind, 'shell'>,
+): PaneSnapshot => {
+  const agent = detectAgent(pane.title, processAgent)
+  return {
+    paneId: pane.pane_id,
+    agent,
+    workspace: pane.workspace,
+    title: pane.title,
+    cwd: pane.cwd.replace(/^file:\/\/[^/]*/, ''),
+    cols: pane.size.cols,
+    rows: pane.size.rows,
+    status: detectStatus(agent, pane.title, stripAnsi(screen)),
+    screen,
+  }
+}
 
-const capturePane = async (pane: WeztermPane): Promise<PaneSnapshot | null> => {
+const capturePane = async (
+  pane: WeztermPane,
+  processAgent?: Exclude<AgentKind, 'shell'>,
+): Promise<PaneSnapshot | null> => {
   try {
-    return toSnapshot(pane, await getScreen(pane.pane_id))
+    return toSnapshot(pane, await getScreen(pane.pane_id), processAgent)
   } catch {
     return null // pane may have closed between list and capture
   }
@@ -42,8 +54,15 @@ export const createPoller = (intervalMs: number): Poller => {
   let ticking = false
 
   const tick = async (): Promise<void> => {
-    const [panes, focusedId] = await Promise.all([listPanes(), focusedPaneId()])
-    const captured = (await Promise.all(panes.map(capturePane))).filter((s) => s !== null)
+    const [panes, focusedId, processAgents] = await Promise.all([
+      listPanes(),
+      focusedPaneId(),
+      listAgentProcesses().catch(() => new Map<string, Exclude<AgentKind, 'shell'>>()),
+    ])
+    const captured = (await Promise.all(panes.map((pane) => {
+      const tty = pane.tty_name?.replace(/^\/dev\//, '')
+      return capturePane(pane, tty ? processAgents.get(tty) : undefined)
+    }))).filter((s) => s !== null)
 
     const changed: PaneSnapshot[] = []
     const seen = new Set<number>()
@@ -51,7 +70,7 @@ export const createPoller = (intervalMs: number): Poller => {
       seen.add(captured0.paneId)
       const snapshot: PaneSnapshot = { ...captured0, active: captured0.paneId === focusedId }
       // active is in the hash so focus moves repaint even when title/screen are unchanged
-      const hash = hashOf(`${snapshot.title}\0${snapshot.active}\0${snapshot.screen ?? ''}`)
+      const hash = hashOf(`${snapshot.agent}\0${snapshot.title}\0${snapshot.active}\0${snapshot.screen ?? ''}`)
       if (states.get(snapshot.paneId)?.hash === hash) continue
       states.set(snapshot.paneId, { hash, snapshot })
       changed.push(snapshot)

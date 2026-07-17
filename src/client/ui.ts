@@ -4,8 +4,11 @@ export const el = (tag: string, className: string): HTMLElement => {
   return node
 }
 
-/** Strip the status glyph (braille spinner or ✳) Claude Code prefixes to titles. */
-export const displayTitle = (title: string): string => title.replace(/^[⠀-⣿✳]\s*/, '')
+/** Strip agent status prefixes from terminal titles. */
+export const displayTitle = (title: string): string =>
+  title
+    .replace(/^\[\s*.\s*\]\s*Action Required\s*\|\s*/, '')
+    .replace(/^[⠀-⣿✳]\s*/, '')
 
 export type SendHandler = (paneId: number, text: string) => void
 

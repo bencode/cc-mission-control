@@ -101,9 +101,9 @@ export const createZoom = (handlers: ZoomHandlers): Zoom => {
   }
 
   const applyState = (snapshot: PaneSnapshot): void => {
-    panel.className = `zoom-panel status-${snapshot.status}`
+    panel.className = `zoom-panel status-${snapshot.status} agent-${snapshot.agent}`
     title.textContent = `${snapshot.workspace} · ${displayTitle(snapshot.title)}`
-    statusLabel.textContent = snapshot.status
+    statusLabel.textContent = snapshot.agent === 'shell' ? snapshot.status : `${snapshot.agent} ${snapshot.status}`
   }
 
   const open = (snapshot: PaneSnapshot, lastScreen: string | undefined): void => {

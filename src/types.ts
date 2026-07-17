@@ -1,7 +1,10 @@
+export type AgentKind = 'claude' | 'codex' | 'shell'
+
 export type SessionStatus = 'working' | 'waiting' | 'idle' | 'shell'
 
 export type PaneSnapshot = {
   paneId: number
+  agent: AgentKind
   workspace: string
   title: string
   cwd: string

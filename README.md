@@ -1,8 +1,8 @@
 # CC Mission Control
 
-A mission-control dashboard for [Claude Code](https://claude.com/claude-code) sessions running in [WezTerm](https://wezterm.org).
+A mission-control dashboard for [Claude Code](https://claude.com/claude-code) and Codex sessions running in [WezTerm](https://wezterm.org).
 
-When you run a dozen Claude Code sessions across WezTerm workspaces and tabs, you lose track of who is working, who is stuck waiting for your approval, and who has been idle for an hour. This tool gives you the movie-style control-room wall: every session as a live, full-color terminal thumbnail, grouped by workspace, with status at a glance.
+When you run a dozen agent sessions across WezTerm workspaces and tabs, you lose track of who is working, who is stuck waiting for your approval, and who has been idle for an hour. This tool gives you the movie-style control-room wall: every session as a live, full-color terminal thumbnail, grouped by workspace, with status at a glance.
 
 ![Status](https://img.shields.io/badge/status-experimental-orange)
 
@@ -13,7 +13,7 @@ When you run a dozen Claude Code sessions across WezTerm workspaces and tabs, yo
 ## Features
 
 - **Live terminal thumbnails** — each pane rendered by xterm.js from WezTerm's ANSI screen dump, scaled down. What you see is exactly what the terminal shows, in color.
-- **Status detection, zero config** — Claude Code already encodes its state in the pane title it sets (braille spinner = working, `✳` = idle). Permission dialogs and plan approvals are detected from the visible screen, shown as `waiting` with an amber pulse.
+- **Status detection, zero config** — Claude Code and Codex sessions are detected from WezTerm pane titles plus attached terminal processes. Claude title markers and Codex action-required titles map to `working | waiting | idle`, with permission dialogs and approvals shown as `waiting` with an amber pulse.
 - **Click to zoom** — click a tile to open the session near full size in a lightbox (live-updating), so you can read exactly what is on screen before acting. Jump to the pane in WezTerm from there, or press Escape to go back to the wall.
 - **Quick approve, with eyes open** — sessions blocked on a permission prompt show `✓ Approve` / `✗ Esc` buttons on both the tile and the zoom view: glance at the title for routine prompts, or zoom in to read the full dialog before approving.
 - **Workspace grouping & summary** — tiles grouped by WezTerm workspace; the top bar counts `working · waiting · idle · shell`, and the page title flags waiting sessions for your browser tab.
@@ -83,9 +83,9 @@ pnpm typecheck
 
 ## Limitations
 
-- Only sees Claude Code sessions running inside WezTerm panes (not VS Code, web, or other terminals).
+- Only sees Claude Code and Codex sessions running inside WezTerm panes (not VS Code, web, or other terminals).
 - "Open in WezTerm" across workspaces requires the Lua bridge above; the WezTerm CLI alone cannot switch workspaces.
-- Status detection is heuristic — it parses what is on screen. New Claude Code UI wording may need a pattern update in `src/status.ts`.
+- Status detection is heuristic — it parses pane titles, attached terminal processes, and selected visible-screen patterns. New Claude Code or Codex UI wording may need a pattern update in `src/status.ts`.
 - The approve button sends the keystroke `1`, which selects "Yes" in current permission dialogs.
 
 ## License

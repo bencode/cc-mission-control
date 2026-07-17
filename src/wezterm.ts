@@ -29,6 +29,7 @@ export type WeztermPane = {
   workspace: string
   title: string
   cwd: string
+  tty_name?: string
   size: { rows: number; cols: number }
 }
 
@@ -83,9 +84,11 @@ export const bringToFront = async (): Promise<void> => {
 const FOCUS_REQUEST_DIR = join(homedir(), '.cache', 'cc-mission-control')
 const FOCUS_REQUEST_FILE = join(FOCUS_REQUEST_DIR, 'focus-request')
 
+export const serializeFocusRequest = (paneId: number): string => `${paneId}\n`
+
 export const writeFocusRequest = async (paneId: number): Promise<void> => {
   await mkdir(FOCUS_REQUEST_DIR, { recursive: true })
-  await writeFile(FOCUS_REQUEST_FILE, `${paneId}\n`)
+  await writeFile(FOCUS_REQUEST_FILE, serializeFocusRequest(paneId))
 }
 
 /** Drop any request left over from a previous run (e.g. bridge not installed yet). */

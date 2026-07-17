@@ -1,7 +1,7 @@
 import { CanvasAddon } from '@xterm/addon-canvas'
 import { Terminal } from '@xterm/xterm'
 
-import type { PaneSnapshot, SessionStatus } from '../types.ts'
+import type { AgentKind, PaneSnapshot, SessionStatus } from '../types.ts'
 import { createActionButtons, createCloseButton, displayTitle, el, type CloseHandler, type SendHandler } from './ui.ts'
 
 // Tiles are scaled down to their card width anyway, so render at a small font:
@@ -86,6 +86,7 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
   // Terminal is created lazily on mount; placeholders carry only the header.
   let terminal: Terminal | null = null
   let size = { cols: snapshot.cols, rows: snapshot.rows }
+  let currentAgent: AgentKind | undefined
   let currentStatus: SessionStatus | undefined
   let currentActive: boolean | undefined
 
@@ -96,11 +97,12 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
 
   const renderHeader = (next: PaneSnapshot): void => {
     const active = next.active ?? false
-    if (next.status !== currentStatus || active !== currentActive) {
+    if (next.agent !== currentAgent || next.status !== currentStatus || active !== currentActive) {
+      currentAgent = next.agent
       currentStatus = next.status
       currentActive = active
-      root.className = `tile status-${next.status}${active ? ' active' : ''}`
-      status.textContent = next.status
+      root.className = `tile status-${next.status} agent-${next.agent}${active ? ' active' : ''}`
+      status.textContent = next.agent === 'shell' ? next.status : `${next.agent} ${next.status}`
     }
     title.textContent = displayTitle(next.title)
   }
