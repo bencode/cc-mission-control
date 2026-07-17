@@ -1,3 +1,34 @@
+import type { AgentKind, PaneSnapshot, SessionStatus } from '../types.ts'
+
+type AgentStatus = Exclude<SessionStatus, 'shell'>
+type AgentKindCount = Record<Exclude<AgentKind, 'shell'>, number>
+
+export type SessionSummaryCounts = Record<AgentStatus, AgentKindCount> & { shell: number }
+
+type SummarySnapshot = Pick<PaneSnapshot, 'agent' | 'status'>
+
+export const summarizeSessions = (snapshots: Iterable<SummarySnapshot>): SessionSummaryCounts => {
+  const counts: SessionSummaryCounts = {
+    working: { codex: 0, claude: 0 },
+    waiting: { codex: 0, claude: 0 },
+    idle: { codex: 0, claude: 0 },
+    shell: 0,
+  }
+  for (const snapshot of snapshots) {
+    if (snapshot.status === 'shell') {
+      counts.shell++
+    } else if (snapshot.agent !== 'shell') {
+      counts[snapshot.status][snapshot.agent]++
+    }
+  }
+  return counts
+}
+
+export const formatSessionSummary = (counts: SessionSummaryCounts): string =>
+  `codex/claude — working ${counts.working.codex}/${counts.working.claude}`
+  + ` · waiting ${counts.waiting.codex}/${counts.waiting.claude}`
+  + ` · idle ${counts.idle.codex}/${counts.idle.claude} · shell ${counts.shell}`
+
 export const el = (tag: string, className: string): HTMLElement => {
   const node = document.createElement(tag)
   node.className = className

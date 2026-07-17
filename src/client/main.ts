@@ -2,6 +2,7 @@ import '@xterm/xterm/css/xterm.css'
 
 import type { PaneSnapshot, SessionStatus, StreamEvent } from '../types.ts'
 import { createTile, type Tile } from './tile.ts'
+import { formatSessionSummary, summarizeSessions } from './ui.ts'
 import { createZoom } from './zoom.ts'
 
 type Entry = {
@@ -115,10 +116,10 @@ const reorderSection = (workspace: string): void => {
 }
 
 const refreshSummary = (): void => {
-  const counts: Record<SessionStatus, number> = { working: 0, waiting: 0, idle: 0, shell: 0 }
-  entries.forEach((entry) => counts[entry.snapshot.status]++)
-  summary.textContent = `${counts.working} working · ${counts.waiting} waiting · ${counts.idle} idle · ${counts.shell} shell`
-  document.title = counts.waiting > 0 ? `(${counts.waiting}!) Mission Control` : 'Mission Control'
+  const counts = summarizeSessions([...entries.values()].map((entry) => entry.snapshot))
+  summary.textContent = formatSessionSummary(counts)
+  const waiting = counts.waiting.codex + counts.waiting.claude
+  document.title = waiting > 0 ? `(${waiting}!) Mission Control` : 'Mission Control'
 }
 
 const upsert = (snapshot: PaneSnapshot): void => {

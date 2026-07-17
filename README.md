@@ -16,7 +16,7 @@ When you run a dozen agent sessions across WezTerm workspaces and tabs, you lose
 - **Status detection, zero config** — Claude Code and Codex sessions are detected from WezTerm pane titles plus attached terminal processes. Claude title markers and Codex action-required titles map to `working | waiting | idle`, with permission dialogs and approvals shown as `waiting` with an amber pulse.
 - **Click to zoom** — click a tile to open the session near full size in a lightbox (live-updating), so you can read exactly what is on screen before acting. Jump to the pane in WezTerm from there, or press Escape to go back to the wall.
 - **Quick approve, with eyes open** — sessions blocked on a permission prompt show `✓ Approve` / `✗ Esc` buttons on both the tile and the zoom view: glance at the title for routine prompts, or zoom in to read the full dialog before approving.
-- **Workspace grouping & summary** — tiles grouped by WezTerm workspace; the top bar counts `working · waiting · idle · shell`, and the page title flags waiting sessions for your browser tab.
+- **Workspace grouping & summary** — tiles grouped by WezTerm workspace; the top bar breaks `working · waiting · idle` down by Codex/Claude counts, reports the shell total, and the page title flags all waiting sessions for your browser tab.
 
 ## Requirements
 
