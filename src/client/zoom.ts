@@ -2,7 +2,7 @@ import { CanvasAddon } from '@xterm/addon-canvas'
 import { Terminal } from '@xterm/xterm'
 
 import type { PaneSnapshot } from '../types.ts'
-import { createActionButtons, displayTitle, el, type SendHandler } from './ui.ts'
+import { createActionButtons, createCloseButton, displayTitle, el, type CloseHandler, type SendHandler } from './ui.ts'
 
 const FONT_SIZE = 14
 const VIEWPORT_MARGIN = 56
@@ -16,6 +16,7 @@ const TERMINAL_THEME = {
 export type ZoomHandlers = {
   onFocus: (paneId: number) => void
   onSend: SendHandler
+  onClose: CloseHandler
 }
 
 export type Zoom = {
@@ -91,17 +92,18 @@ export const createZoom = (handlers: ZoomHandlers): Zoom => {
     const focusButton = el('button', 'action focus')
     focusButton.textContent = '⧉ Open in WezTerm'
     focusButton.addEventListener('click', () => handlers.onFocus(snapshot.paneId))
+    const killButton = createCloseButton(snapshot.paneId, handlers.onClose, '✕ Kill')
     const closeButton = el('button', 'action close')
     closeButton.textContent = '✕'
     closeButton.addEventListener('click', close)
-    controls.append(focusButton, closeButton)
+    controls.append(focusButton, killButton, closeButton)
     header.replaceChildren(light, title, statusLabel, actions, controls)
   }
 
   const applyState = (snapshot: PaneSnapshot): void => {
-    panel.className = `zoom-panel status-${snapshot.status}`
+    panel.className = `zoom-panel status-${snapshot.status} agent-${snapshot.agent}`
     title.textContent = `${snapshot.workspace} · ${displayTitle(snapshot.title)}`
-    statusLabel.textContent = snapshot.status
+    statusLabel.textContent = snapshot.agent === 'shell' ? snapshot.status : `${snapshot.agent} ${snapshot.status}`
   }
 
   const open = (snapshot: PaneSnapshot, lastScreen: string | undefined): void => {

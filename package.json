@@ -1,7 +1,7 @@
 {
   "name": "cc-mission-control",
   "version": "0.1.0",
-  "description": "A mission-control dashboard for Claude Code sessions running in WezTerm — live terminal thumbnails, status at a glance, click to focus.",
+  "description": "A mission-control dashboard for Claude Code and Codex sessions running in WezTerm — live terminal thumbnails, status at a glance, click to focus.",
   "type": "module",
   "license": "MIT",
   "scripts": {

@@ -2,6 +2,7 @@ import '@xterm/xterm/css/xterm.css'
 
 import type { PaneSnapshot, SessionStatus, StreamEvent } from '../types.ts'
 import { createTile, type Tile } from './tile.ts'
+import { formatSessionSummary, summarizeSessions } from './ui.ts'
 import { createZoom } from './zoom.ts'
 
 type Entry = {
@@ -29,8 +30,9 @@ const post = (path: string, body?: unknown): void => {
 
 const focusPane = (paneId: number): void => post(`/api/focus/${paneId}`)
 const sendToPane = (paneId: number, text: string): void => post(`/api/send/${paneId}`, { text })
+const closePane = (paneId: number): void => post(`/api/close/${paneId}`)
 
-const zoom = createZoom({ onFocus: focusPane, onSend: sendToPane })
+const zoom = createZoom({ onFocus: focusPane, onSend: sendToPane, onClose: closePane })
 
 const openZoom = (paneId: number): void => {
   const entry = entries.get(paneId)
@@ -114,10 +116,10 @@ const reorderSection = (workspace: string): void => {
 }
 
 const refreshSummary = (): void => {
-  const counts: Record<SessionStatus, number> = { working: 0, waiting: 0, idle: 0, shell: 0 }
-  entries.forEach((entry) => counts[entry.snapshot.status]++)
-  summary.textContent = `${counts.working} working · ${counts.waiting} waiting · ${counts.idle} idle · ${counts.shell} shell`
-  document.title = counts.waiting > 0 ? `(${counts.waiting}!) Mission Control` : 'Mission Control'
+  const counts = summarizeSessions([...entries.values()].map((entry) => entry.snapshot))
+  summary.textContent = formatSessionSummary(counts)
+  const waiting = counts.waiting.codex + counts.waiting.claude
+  document.title = waiting > 0 ? `(${waiting}!) Mission Control` : 'Mission Control'
 }
 
 const upsert = (snapshot: PaneSnapshot): void => {
@@ -129,7 +131,7 @@ const upsert = (snapshot: PaneSnapshot): void => {
     existing.tile.update({ ...existing.snapshot, screen: existing.lastScreen })
     return
   }
-  const tile = createTile(snapshot, { onZoom: openZoom, onFocus: focusPane, onSend: sendToPane })
+  const tile = createTile(snapshot, { onZoom: openZoom, onFocus: focusPane, onSend: sendToPane, onClose: closePane })
   entries.set(snapshot.paneId, {
     tile,
     snapshot: { ...snapshot, screen: undefined },

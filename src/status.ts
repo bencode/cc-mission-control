@@ -1,4 +1,4 @@
-import type { SessionStatus } from './types.ts'
+import type { AgentKind, SessionStatus } from './types.ts'
 
 /**
  * Claude Code reflects its state in the pane title it sets:
@@ -9,6 +9,7 @@ import type { SessionStatus } from './types.ts'
 const BRAILLE_START = 0x2800
 const BRAILLE_END = 0x28ff
 const IDLE_MARKER = '✳'
+const CODEX_ACTION_REQUIRED = /^\[\s*.\s*\]\s*Action Required\s*\|/
 
 const ANSI_PATTERN = new RegExp(
   [
@@ -47,12 +48,30 @@ const isBrailleSpinner = (char: string): boolean => {
 export const isClaudePane = (title: string): boolean =>
   title.startsWith(IDLE_MARKER) || isBrailleSpinner(title.charAt(0))
 
+export const isCodexActionRequiredTitle = (title: string): boolean =>
+  CODEX_ACTION_REQUIRED.test(title)
+
+export const detectAgent = (
+  title: string,
+  processAgent?: Exclude<AgentKind, 'shell'>,
+): AgentKind => {
+  if (processAgent) return processAgent
+  if (isCodexActionRequiredTitle(title)) return 'codex'
+  return isClaudePane(title) ? 'claude' : 'shell'
+}
+
 /**
  * Derive a session status from the pane title and its visible screen text.
  * `screenText` must already be stripped of ANSI escapes.
  */
-export const detectStatus = (title: string, screenText: string): SessionStatus => {
+export const detectStatus = (agent: AgentKind, title: string, screenText: string): SessionStatus => {
+  if (agent === 'shell') return 'shell'
   if (isBrailleSpinner(title.charAt(0))) return 'working'
-  if (!title.startsWith(IDLE_MARKER)) return 'shell'
+
+  if (agent === 'codex') {
+    return isCodexActionRequiredTitle(title) ? 'waiting' : 'idle'
+  }
+
+  if (!title.startsWith(IDLE_MARKER)) return 'idle'
   return WAITING_CURSOR.test(tail(screenText)) ? 'waiting' : 'idle'
 }

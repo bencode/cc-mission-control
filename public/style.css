@@ -9,6 +9,7 @@
   --idle: #3fb950;
   --shell: #4a5260;
   --current: #a371f7;
+  --danger: #f85149;
 }
 
 * { box-sizing: border-box; }
@@ -143,6 +144,16 @@ body:not(.show-shells) .status-shell { display: none; }
 .action.approve { border-color: var(--idle); color: var(--idle); }
 .action.dismiss { border-color: var(--shell); color: var(--muted); }
 .action:hover { background: var(--border); }
+
+/* kill (close pane) — armed state turns red so the second, destructive click reads clearly */
+.action.kill { border-color: var(--border); color: var(--muted); padding: 1px 6px; }
+.action.kill:hover { border-color: var(--waiting); color: var(--waiting); }
+.action.kill.armed { border-color: var(--danger); color: var(--danger); background: rgba(248, 81, 73, 0.12); }
+/* on the wall the ✕ stays hidden until the tile is hovered (or already armed): keeps
+   the board calm and guards against mis-kills; the zoom view shows it always. */
+.tile .action.kill { visibility: hidden; }
+.tile:hover .action.kill,
+.tile .action.kill.armed { visibility: visible; }
 
 /* min-height reserves space for header-only placeholders so off-screen tiles
    stay off-screen (and unmounted); a mounted tile sets its exact height inline. */

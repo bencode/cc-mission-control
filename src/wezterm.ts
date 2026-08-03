@@ -29,6 +29,7 @@ export type WeztermPane = {
   workspace: string
   title: string
   cwd: string
+  tty_name?: string
   size: { rows: number; cols: number }
 }
 
@@ -64,6 +65,11 @@ export const sendText = async (paneId: number, text: string): Promise<void> => {
   await run(['cli', 'send-text', '--pane-id', String(paneId), '--no-paste', '--', text])
 }
 
+/** Terminate a pane and everything running in it; the poller drops it next tick. */
+export const killPane = async (paneId: number): Promise<void> => {
+  await run(['cli', 'kill-pane', '--pane-id', String(paneId)])
+}
+
 /** Bring the WezTerm app window to the foreground (macOS only; no-op elsewhere). */
 export const bringToFront = async (): Promise<void> => {
   if (process.platform !== 'darwin') return
@@ -78,9 +84,11 @@ export const bringToFront = async (): Promise<void> => {
 const FOCUS_REQUEST_DIR = join(homedir(), '.cache', 'cc-mission-control')
 const FOCUS_REQUEST_FILE = join(FOCUS_REQUEST_DIR, 'focus-request')
 
+export const serializeFocusRequest = (paneId: number): string => `${paneId}\n`
+
 export const writeFocusRequest = async (paneId: number): Promise<void> => {
   await mkdir(FOCUS_REQUEST_DIR, { recursive: true })
-  await writeFile(FOCUS_REQUEST_FILE, `${paneId}\n`)
+  await writeFile(FOCUS_REQUEST_FILE, serializeFocusRequest(paneId))
 }
 
 /** Drop any request left over from a previous run (e.g. bridge not installed yet). */

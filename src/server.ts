@@ -7,6 +7,7 @@ import {
   activatePane,
   bringToFront,
   clearFocusRequest,
+  killPane,
   sendText,
   writeFocusRequest,
 } from './wezterm.ts'
@@ -72,6 +73,8 @@ const handleAction = async (req: IncomingMessage, res: ServerResponse, url: URL)
   } else if (action === 'send') {
     const { text } = JSON.parse(await readBody(req)) as { text: string }
     await sendText(paneId, text)
+  } else if (action === 'close') {
+    await killPane(paneId)
   } else {
     res.writeHead(404).end()
     return
