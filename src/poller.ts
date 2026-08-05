@@ -34,7 +34,8 @@ const capturePane = async (
 ): Promise<PaneSnapshot | null> => {
   try {
     return toSnapshot(pane, await getScreen(pane.pane_id), processAgent)
-  } catch {
+  } catch (error) {
+    console.warn(`capture failed for pane ${pane.pane_id}:`, error)
     return null // pane may have closed between list and capture
   }
 }
@@ -57,7 +58,10 @@ export const createPoller = (intervalMs: number): Poller => {
     const [panes, focusedId, processAgents] = await Promise.all([
       listPanes(),
       focusedPaneId(),
-      listAgentProcesses().catch(() => new Map<string, Exclude<AgentKind, 'shell'>>()),
+      listAgentProcesses().catch((error) => {
+        console.error('agent process listing failed:', error)
+        return new Map<string, Exclude<AgentKind, 'shell'>>()
+      }),
     ])
     const captured = await Promise.all(
       panes.map(async (pane) => {

@@ -55,7 +55,8 @@ export const focusedPaneId = async (): Promise<number | null> => {
     const clients = JSON.parse(await run(['cli', 'list-clients', '--format', 'json'])) as WeztermClient[]
     if (clients.length === 0) return null
     return clients.reduce((a, b) => (b.idle_time.secs < a.idle_time.secs ? b : a)).focused_pane_id
-  } catch {
+  } catch (error) {
+    console.warn('wezterm list-clients failed; focused-pane tracking degraded:', error)
     return null // older wezterm without list-clients, or no GUI client attached
   }
 }

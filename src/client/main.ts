@@ -237,7 +237,7 @@ fullscreenToggle.addEventListener('click', () => {
   const action = document.fullscreenElement
     ? document.exitFullscreen()
     : document.documentElement.requestFullscreen()
-  action.catch(() => {}) // fullscreen may be blocked by policy; ignore
+  action.catch((error) => console.warn('fullscreen request blocked:', error))
 })
 document.addEventListener('fullscreenchange', () => {
   const on = document.fullscreenElement !== null
