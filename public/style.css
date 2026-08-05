@@ -86,11 +86,22 @@ body.disconnected #board { opacity: 0.55; transition: opacity 0.2s; }
 
 #board { padding: 12px 16px 48px; }
 
-.workspace > h2 {
-  margin: 18px 0 8px;
-  font-size: 12px;
+/* top-level grouping is by status (waiting → working → idle → shell); each status
+   section holds workspace sub-groups with the same tile grid as before */
+.status-group-header { display: flex; align-items: baseline; gap: 8px; margin: 18px 0 8px; }
+.status-group-header h2 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; }
+.status-group-header .count { font-weight: 600; color: var(--text); }
+.status-group-header .split { font-size: 11px; color: var(--muted); }
+.status-group.status-waiting .status-group-header h2 { color: var(--waiting); }
+.status-group.status-working .status-group-header h2 { color: var(--working); }
+.status-group.status-idle .status-group-header h2 { color: var(--idle); }
+.status-group.status-shell .status-group-header h2 { color: var(--shell); }
+
+.workspace > h3 {
+  margin: 10px 0 6px;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   color: var(--muted);
 }
 
@@ -138,7 +149,7 @@ body.disconnected #board { opacity: 0.55; transition: opacity 0.2s; }
 .status-waiting { border-color: var(--waiting); }
 .status-waiting .status-label { color: var(--waiting); }
 .status-shell { opacity: 0.5; }
-body:not(.show-shells) .status-shell { display: none; }
+body:not(.show-shells) .status-group.status-shell { display: none; }
 
 @keyframes pulse { 50% { opacity: 0.3; } }
 @keyframes blink { 50% { opacity: 0.15; } }

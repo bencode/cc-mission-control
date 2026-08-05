@@ -11,6 +11,10 @@ type Entry = {
   /** Latest full screen; stream events omit `screen` when unchanged. */
   lastScreen?: string
   inViewport: boolean
+  /** Current placement, tracked so a status/workspace change can re-parent the tile
+      and prune the section it left behind. */
+  status: SessionStatus
+  workspace: string
 }
 
 const STATUS_ORDER: Record<SessionStatus, number> = { waiting: 0, working: 1, idle: 2, shell: 3 }
@@ -18,7 +22,10 @@ const STATUS_ORDER: Record<SessionStatus, number> = { waiting: 0, working: 1, id
 const board = document.querySelector('#board') as HTMLElement
 const summary = document.querySelector('#summary') as HTMLElement
 const entries = new Map<number, Entry>()
-const sections = new Map<string, HTMLElement>()
+const statusGroups = new Map<SessionStatus, HTMLElement>() // status → <section class="status-group">
+const wsSections = new Map<string, HTMLElement>() // `${status} ${workspace}` → <section class="workspace">
+
+const wsKey = (status: SessionStatus, workspace: string): string => `${status} ${workspace}`
 
 const post = (path: string, body?: unknown): void => {
   void fetch(path, {
@@ -92,27 +99,52 @@ const viewport = new IntersectionObserver(
   { rootMargin: '300px' },
 )
 
-const sectionFor = (workspace: string): HTMLElement => {
-  const existing = sections.get(workspace)
+const STATUS_LABEL: Record<SessionStatus, string> = { waiting: 'WAITING', working: 'WORKING', idle: 'IDLE', shell: 'SHELL' }
+
+const statusGroupFor = (status: SessionStatus): HTMLElement => {
+  const existing = statusGroups.get(status)
+  if (existing) return existing
+  const group = document.createElement('section')
+  group.className = `status-group status-${status}`
+  group.dataset.status = status
+  group.innerHTML = `<header class="status-group-header"><h2>${STATUS_LABEL[status]}</h2><span class="count"></span><span class="split"></span></header><div class="status-body"></div>`
+  statusGroups.set(status, group)
+  const ordered = [...statusGroups.keys()].sort((a, b) => STATUS_ORDER[a] - STATUS_ORDER[b])
+  board.insertBefore(group, board.children[ordered.indexOf(status)] ?? null)
+  return group
+}
+
+const workspaceSectionFor = (status: SessionStatus, workspace: string): HTMLElement => {
+  const key = wsKey(status, workspace)
+  const existing = wsSections.get(key)
   if (existing) return existing
   const section = document.createElement('section')
   section.className = 'workspace'
-  section.innerHTML = `<h2>${workspace}</h2><div class="tiles"></div>`
-  sections.set(workspace, section)
-  const ordered = [...sections.keys()].sort()
-  board.insertBefore(section, board.children[ordered.indexOf(workspace)] ?? null)
+  section.dataset.workspace = workspace
+  section.innerHTML = `<h3>${workspace}</h3><div class="tiles"></div>`
+  wsSections.set(key, section)
+  const body = statusGroupFor(status).querySelector('.status-body') as HTMLElement
+  const ordered = [...body.children].map((el) => (el as HTMLElement).dataset.workspace ?? '')
+  ordered.push(workspace)
+  ordered.sort()
+  body.insertBefore(section, body.children[ordered.indexOf(workspace)] ?? null)
   return section
 }
 
-const reorderSection = (workspace: string): void => {
-  const tiles = sections.get(workspace)?.querySelector('.tiles')
-  if (!tiles) return
-  const rank = (node: Element): number => {
-    const entry = entries.get(Number((node as HTMLElement).dataset.paneId))
-    return entry ? STATUS_ORDER[entry.snapshot.status] * 1e6 + entry.snapshot.paneId : 0
+/** Drop a (status, workspace) section once its tiles empty out, and the whole status
+    group when it has no workspace sections left. Called after a tile leaves or is removed. */
+const prune = (status: SessionStatus, workspace: string): void => {
+  const key = wsKey(status, workspace)
+  const section = wsSections.get(key)
+  if (section && section.querySelector('.tiles')?.children.length === 0) {
+    section.remove()
+    wsSections.delete(key)
   }
-  const ordered = [...tiles.children].sort((a, b) => rank(a) - rank(b))
-  if (ordered.some((node, i) => node !== tiles.children[i])) tiles.append(...ordered)
+  const group = statusGroups.get(status)
+  if (group && group.querySelector('.workspace') === null) {
+    group.remove()
+    statusGroups.delete(status)
+  }
 }
 
 const refreshSummary = (): void => {
@@ -120,6 +152,21 @@ const refreshSummary = (): void => {
   summary.replaceChildren(renderSessionSummary(counts))
   const waiting = counts.waiting.codex + counts.waiting.claude
   document.title = waiting > 0 ? `(${waiting}!) Mission Control` : 'Mission Control'
+  // Repaint each present status section's header count (and codex·claude split) from
+  // the same totals.
+  for (const status of statusGroups.keys()) {
+    const group = statusGroups.get(status)!
+    const countEl = group.querySelector('.count')
+    const splitEl = group.querySelector('.split')
+    if (status === 'shell') {
+      if (countEl) countEl.textContent = String(counts.shell)
+      if (splitEl) splitEl.textContent = ''
+      continue
+    }
+    const { codex, claude } = counts[status]
+    if (countEl) countEl.textContent = String(codex + claude)
+    if (splitEl) splitEl.textContent = codex || claude ? `(${codex}·${claude})` : ''
+  }
 }
 
 const upsert = (snapshot: PaneSnapshot): void => {
@@ -132,6 +179,15 @@ const upsert = (snapshot: PaneSnapshot): void => {
     // (setTimeout-driven) write buffer; lastScreen keeps the latest so the
     // visibilitychange handler can repaint once when the tab returns.
     existing.tile.update({ ...existing.snapshot, screen: document.hidden ? undefined : existing.lastScreen })
+    // A status or workspace change relocates the tile to its new (status, workspace)
+    // section and prunes the one it left. (Re-parenting was missing entirely before.)
+    if (existing.status !== snapshot.status || existing.workspace !== snapshot.workspace) {
+      const { status, workspace } = existing
+      existing.status = snapshot.status
+      existing.workspace = snapshot.workspace
+      workspaceSectionFor(snapshot.status, snapshot.workspace).querySelector('.tiles')?.appendChild(existing.tile.root)
+      prune(status, workspace)
+    }
     return
   }
   const tile = createTile(snapshot, { onZoom: openZoom, onFocus: focusPane, onSend: sendToPane, onClose: closePane })
@@ -140,8 +196,10 @@ const upsert = (snapshot: PaneSnapshot): void => {
     snapshot: { ...snapshot, screen: undefined },
     lastScreen: snapshot.screen,
     inViewport: false,
+    status: snapshot.status,
+    workspace: snapshot.workspace,
   })
-  sectionFor(snapshot.workspace).querySelector('.tiles')?.appendChild(tile.root)
+  workspaceSectionFor(snapshot.status, snapshot.workspace).querySelector('.tiles')?.appendChild(tile.root)
   viewport.observe(tile.root) // mounts lazily once it enters the viewport
 }
 
@@ -152,13 +210,9 @@ const remove = (paneId: number): void => {
   viewport.unobserve(entry.tile.root)
   entry.tile.dispose()
   entry.tile.root.remove()
+  const { status, workspace } = entry
   entries.delete(paneId)
-  const workspace = entry.snapshot.workspace
-  const section = sections.get(workspace)
-  if (section && section.querySelector('.tiles')?.children.length === 0) {
-    section.remove()
-    sections.delete(workspace)
-  }
+  prune(status, workspace)
 }
 
 /**
@@ -185,7 +239,6 @@ const handleEvent = (event: StreamEvent): void => {
     .filter((p) => p.paneId === zoom.openPaneId())
     .forEach((p) => zoom.update(document.hidden ? { ...p, screen: undefined } : p))
   event.removed.forEach(remove)
-  if (!document.hidden) new Set(event.panes.map((p) => p.workspace)).forEach(reorderSection)
   followActive(event)
   scrollFollowArmed = true
   refreshSummary()
@@ -200,7 +253,6 @@ document.addEventListener('visibilitychange', () => {
   const zoomedId = zoom.openPaneId()
   const zoomed = zoomedId === null ? undefined : entries.get(zoomedId)
   if (zoomed) zoom.update({ ...zoomed.snapshot, screen: zoomed.lastScreen })
-  new Set([...entries.values()].map((e) => e.snapshot.workspace)).forEach(reorderSection)
   refreshSummary()
 })
 
