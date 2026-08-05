@@ -44,7 +44,21 @@ body {
 /* disconnected: amber pulse + dim the board so stale data never reads as live */
 body.disconnected #conn { background: var(--waiting); animation: blink 0.8s infinite; }
 body.disconnected #board { opacity: 0.55; transition: opacity 0.2s; }
-#summary { color: var(--muted); }
+#summary { display: inline-flex; align-items: baseline; gap: 14px; color: var(--muted); }
+/* summary chips: dot + total carry the status color; the (codex·claude) split
+   stays small and muted; zero-count chips recede so live numbers pop */
+.stat { white-space: nowrap; }
+.stat::before { content: '●'; margin-right: 5px; font-size: 9px; }
+.stat .num { font-weight: 600; color: var(--text); }
+.stat .split { font-size: 11px; opacity: 0.7; }
+.stat.zero { opacity: 0.45; }
+.stat-working::before, .stat-working .num { color: var(--working); }
+.stat-waiting::before, .stat-waiting .num { color: var(--waiting); }
+.stat-idle::before, .stat-idle .num { color: var(--idle); }
+.stat-shell::before { color: var(--shell); }
+/* waiting > 0: amber pill so the one actionable number reads across the room */
+.stat.hot { background: rgba(227, 160, 8, 0.16); border-radius: 4px; padding: 1px 6px; }
+.stat.hot .num { font-weight: 700; }
 #shell-filter { margin-left: auto; color: var(--muted); cursor: pointer; }
 #cols-filter { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 #cols-select {

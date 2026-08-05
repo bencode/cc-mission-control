@@ -24,10 +24,34 @@ export const summarizeSessions = (snapshots: Iterable<SummarySnapshot>): Session
   return counts
 }
 
-export const formatSessionSummary = (counts: SessionSummaryCounts): string =>
-  `codex/claude — working ${counts.working.codex}/${counts.working.claude}`
-  + ` · waiting ${counts.waiting.codex}/${counts.waiting.claude}`
-  + ` · idle ${counts.idle.codex}/${counts.idle.claude} · shell ${counts.shell}`
+const AGENT_STATUSES = ['working', 'waiting', 'idle'] as const satisfies readonly AgentStatus[]
+
+const chip = (status: string, total: number, split?: [number, number]): HTMLElement => {
+  const classes = ['stat', `stat-${status}`]
+  if (total === 0) classes.push('zero')
+  if (status === 'waiting' && total > 0) classes.push('hot')
+  const node = el('span', classes.join(' '))
+  const num = el('span', 'num')
+  num.textContent = String(total)
+  node.append(num, ` ${status}`)
+  if (split) {
+    const sub = el('span', 'split')
+    sub.textContent = ` (${split[0]}·${split[1]})`
+    node.title = `codex ${split[0]} · claude ${split[1]}`
+    node.appendChild(sub)
+  }
+  return node
+}
+
+export const renderSessionSummary = (counts: SessionSummaryCounts): DocumentFragment => {
+  const fragment = document.createDocumentFragment()
+  for (const status of AGENT_STATUSES) {
+    const { codex, claude } = counts[status]
+    fragment.appendChild(chip(status, codex + claude, [codex, claude]))
+  }
+  fragment.appendChild(chip('shell', counts.shell))
+  return fragment
+}
 
 export const el = (tag: string, className: string): HTMLElement => {
   const node = document.createElement(tag)

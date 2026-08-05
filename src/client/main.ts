@@ -2,7 +2,7 @@ import '@xterm/xterm/css/xterm.css'
 
 import type { PaneSnapshot, SessionStatus, StreamEvent } from '../types.ts'
 import { createTile, type Tile } from './tile.ts'
-import { formatSessionSummary, summarizeSessions } from './ui.ts'
+import { renderSessionSummary, summarizeSessions } from './ui.ts'
 import { createZoom } from './zoom.ts'
 
 type Entry = {
@@ -117,7 +117,7 @@ const reorderSection = (workspace: string): void => {
 
 const refreshSummary = (): void => {
   const counts = summarizeSessions([...entries.values()].map((entry) => entry.snapshot))
-  summary.textContent = formatSessionSummary(counts)
+  summary.replaceChildren(renderSessionSummary(counts))
   const waiting = counts.waiting.codex + counts.waiting.claude
   document.title = waiting > 0 ? `(${waiting}!) Mission Control` : 'Mission Control'
 }
