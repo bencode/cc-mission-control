@@ -59,21 +59,27 @@ export const createPoller = (intervalMs: number): Poller => {
       focusedPaneId(),
       listAgentProcesses().catch(() => new Map<string, Exclude<AgentKind, 'shell'>>()),
     ])
-    const captured = (await Promise.all(panes.map((pane) => {
-      const tty = pane.tty_name?.replace(/^\/dev\//, '')
-      return capturePane(pane, tty ? processAgents.get(tty) : undefined)
-    }))).filter((s) => s !== null)
+    const captured = await Promise.all(
+      panes.map(async (pane) => {
+        const tty = pane.tty_name?.replace(/^\/dev\//, '')
+        const snapshot = await capturePane(pane, tty ? processAgents.get(tty) : undefined)
+        return { paneId: pane.pane_id, snapshot }
+      }),
+    )
 
     const changed: PaneSnapshot[] = []
     const seen = new Set<number>()
-    for (const captured0 of captured) {
-      seen.add(captured0.paneId)
-      const snapshot: PaneSnapshot = { ...captured0, active: captured0.paneId === focusedId }
+    for (const { paneId, snapshot } of captured) {
+      // A pane in the list is alive even when its capture failed (transient cli
+      // error or timeout); only panes missing from the list count as removed.
+      seen.add(paneId)
+      if (snapshot === null) continue
+      const next: PaneSnapshot = { ...snapshot, active: snapshot.paneId === focusedId }
       // active is in the hash so focus moves repaint even when title/screen are unchanged
-      const hash = hashOf(`${snapshot.agent}\0${snapshot.title}\0${snapshot.active}\0${snapshot.screen ?? ''}`)
-      if (states.get(snapshot.paneId)?.hash === hash) continue
-      states.set(snapshot.paneId, { hash, snapshot })
-      changed.push(snapshot)
+      const hash = hashOf(`${next.agent}\0${next.title}\0${next.active}\0${next.screen ?? ''}`)
+      if (states.get(next.paneId)?.hash === hash) continue
+      states.set(next.paneId, { hash, snapshot: next })
+      changed.push(next)
     }
 
     const removed = [...states.keys()].filter((id) => !seen.has(id))

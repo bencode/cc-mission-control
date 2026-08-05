@@ -2,6 +2,7 @@ import { CanvasAddon } from '@xterm/addon-canvas'
 import { Terminal } from '@xterm/xterm'
 
 import type { PaneSnapshot } from '../types.ts'
+import { createScreenWriter } from './screen-writer.ts'
 import { createActionButtons, createCloseButton, displayTitle, el, type CloseHandler, type SendHandler } from './ui.ts'
 
 const FONT_SIZE = 14
@@ -24,11 +25,6 @@ export type Zoom = {
   update: (snapshot: PaneSnapshot) => void
   close: () => void
   openPaneId: () => number | null
-}
-
-const writeScreen = (terminal: Terminal, screen: string): void => {
-  terminal.reset()
-  terminal.write(screen.replace(/(?:\r?\n)+$/, ''))
 }
 
 /** Scale the full-size terminal down just enough to fit the viewport. */
@@ -66,12 +62,14 @@ export const createZoom = (handlers: ZoomHandlers): Zoom => {
 
   let terminal: Terminal | null = null
   let paneId: number | null = null
+  const writer = createScreenWriter(() => terminal)
 
   const close = (): void => {
     backdrop.classList.add('hidden')
     document.removeEventListener('keydown', onKeydown, true)
     terminal?.dispose()
     terminal = null
+    writer.reset() // the disposed terminal's write callback will never fire
     paneId = null
   }
 
@@ -122,7 +120,7 @@ export const createZoom = (handlers: ZoomHandlers): Zoom => {
     screen.style.transform = ''
     terminal.open(screen)
     terminal.loadAddon(new CanvasAddon()) // after open(), before first write()
-    if (lastScreen !== undefined) writeScreen(terminal, lastScreen)
+    if (lastScreen !== undefined) writer.write(lastScreen)
     buildHeader(snapshot)
     applyState(snapshot)
     fitToViewport(terminal, screen, body)
@@ -134,7 +132,7 @@ export const createZoom = (handlers: ZoomHandlers): Zoom => {
   const update = (snapshot: PaneSnapshot): void => {
     if (terminal === null || snapshot.paneId !== paneId) return
     applyState(snapshot)
-    if (snapshot.screen !== undefined) writeScreen(terminal, snapshot.screen)
+    if (snapshot.screen !== undefined) writer.write(snapshot.screen)
   }
 
   return { open, update, close, openPaneId: () => paneId }

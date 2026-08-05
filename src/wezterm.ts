@@ -19,8 +19,15 @@ const WEZTERM_BIN = resolveBin()
 /** Screen dumps of large panes can be sizable; allow plenty of headroom. */
 const MAX_BUFFER = 16 * 1024 * 1024
 
+/**
+ * Kill a cli call that hangs on a busy/unresponsive GUI. Without this the
+ * poller's tick never settles and every later tick is skipped — the wall
+ * freezes while heartbeats keep the stream looking alive.
+ */
+const CLI_TIMEOUT_MS = 5_000
+
 const run = (args: string[]): Promise<string> =>
-  execFileAsync(WEZTERM_BIN, args, { maxBuffer: MAX_BUFFER }).then((r) => r.stdout)
+  execFileAsync(WEZTERM_BIN, args, { maxBuffer: MAX_BUFFER, timeout: CLI_TIMEOUT_MS }).then((r) => r.stdout)
 
 export type WeztermPane = {
   window_id: number

@@ -127,8 +127,11 @@ const upsert = (snapshot: PaneSnapshot): void => {
   if (existing) {
     existing.lastScreen = snapshot.screen ?? existing.lastScreen
     existing.snapshot = { ...snapshot, screen: undefined }
-    // update() refreshes the header always and the screen only when mounted.
-    existing.tile.update({ ...existing.snapshot, screen: existing.lastScreen })
+    // update() refreshes the header always; the screen only when mounted and
+    // visible. While hidden, writes would just pile up in xterm's throttled
+    // (setTimeout-driven) write buffer; lastScreen keeps the latest so the
+    // visibilitychange handler can repaint once when the tab returns.
+    existing.tile.update({ ...existing.snapshot, screen: document.hidden ? undefined : existing.lastScreen })
     return
   }
   const tile = createTile(snapshot, { onZoom: openZoom, onFocus: focusPane, onSend: sendToPane, onClose: closePane })
@@ -178,7 +181,9 @@ const followActive = (event: StreamEvent): void => {
 
 const handleEvent = (event: StreamEvent): void => {
   event.panes.forEach(upsert)
-  event.panes.filter((p) => p.paneId === zoom.openPaneId()).forEach((p) => zoom.update(p))
+  event.panes
+    .filter((p) => p.paneId === zoom.openPaneId())
+    .forEach((p) => zoom.update(document.hidden ? { ...p, screen: undefined } : p))
   event.removed.forEach(remove)
   if (!document.hidden) new Set(event.panes.map((p) => p.workspace)).forEach(reorderSection)
   followActive(event)
@@ -189,6 +194,12 @@ const handleEvent = (event: StreamEvent): void => {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return
   scheduleDrain() // mount visible tiles that were left as placeholders while hidden
+  // Screens skipped writes while hidden; repaint mounted terminals from the
+  // latest snapshots so nothing shows pre-hidden content.
+  entries.forEach((entry) => entry.tile.update({ ...entry.snapshot, screen: entry.lastScreen }))
+  const zoomedId = zoom.openPaneId()
+  const zoomed = zoomedId === null ? undefined : entries.get(zoomedId)
+  if (zoomed) zoom.update({ ...zoomed.snapshot, screen: zoomed.lastScreen })
   new Set([...entries.values()].map((e) => e.snapshot.workspace)).forEach(reorderSection)
   refreshSummary()
 })

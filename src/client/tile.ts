@@ -2,6 +2,7 @@ import { CanvasAddon } from '@xterm/addon-canvas'
 import { Terminal } from '@xterm/xterm'
 
 import type { AgentKind, PaneSnapshot, SessionStatus } from '../types.ts'
+import { createScreenWriter } from './screen-writer.ts'
 import { createActionButtons, createCloseButton, displayTitle, el, type CloseHandler, type SendHandler } from './ui.ts'
 
 // Tiles are scaled down to their card width anyway, so render at a small font:
@@ -85,15 +86,11 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
 
   // Terminal is created lazily on mount; placeholders carry only the header.
   let terminal: Terminal | null = null
+  const writer = createScreenWriter(() => terminal)
   let size = { cols: snapshot.cols, rows: snapshot.rows }
   let currentAgent: AgentKind | undefined
   let currentStatus: SessionStatus | undefined
   let currentActive: boolean | undefined
-
-  const writeScreen = (text: string): void => {
-    terminal?.reset()
-    terminal?.write(text.replace(/(?:\r?\n)+$/, ''))
-  }
 
   const renderHeader = (next: PaneSnapshot): void => {
     const active = next.active ?? false
@@ -121,7 +118,7 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
     })
     terminal.open(screen)
     terminal.loadAddon(new CanvasAddon()) // after open(), before first write()
-    if (next.screen !== undefined) writeScreen(next.screen)
+    if (next.screen !== undefined) writer.write(next.screen)
     fitToTile(terminal, screen, wrap)
   }
 
@@ -129,6 +126,7 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
     if (!terminal) return
     terminal.dispose() // frees the canvas layers; wrap keeps its height, no reflow
     terminal = null
+    writer.reset() // the disposed terminal's write callback will never fire
     screen.replaceChildren()
     screen.style.transform = ''
   }
@@ -141,7 +139,7 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
       terminal.resize(next.cols, next.rows)
       fitToTile(terminal, screen, wrap)
     }
-    if (next.screen !== undefined) writeScreen(next.screen)
+    if (next.screen !== undefined) writer.write(next.screen)
   }
 
   const refit = (): void => {
