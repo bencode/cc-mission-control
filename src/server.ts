@@ -59,6 +59,18 @@ const readBody = async (req: IncomingMessage): Promise<string> => {
   return Buffer.concat(chunks).toString()
 }
 
+/** Run one focus step, logging a rejection instead of letting it abort the others.
+    Focus is best-effort: a stale pane id (closed since the last poll) or a busy GUI
+    can reject one step, but the cross-workspace handoff and bring-to-front should
+    still run. */
+const runFocusStep = async (label: string, task: Promise<unknown>): Promise<void> => {
+  try {
+    await task
+  } catch (error) {
+    console.warn(`focus step ${label} failed:`, error)
+  }
+}
+
 const handleAction = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
   const [, , action, idPart] = url.pathname.split('/')
   const paneId = Number(idPart)
@@ -67,9 +79,14 @@ const handleAction = async (req: IncomingMessage, res: ServerResponse, url: URL)
     return
   }
   if (action === 'focus') {
-    await activatePane(paneId) // instant within the active workspace
-    await writeFocusRequest(paneId) // Lua bridge handles cross-workspace jumps
-    await bringToFront()
+    // Run the three steps in parallel (total = max, not sum) and tolerate a single
+    // step failing — a stale pane id or a busy GUI must not abort the cross-workspace
+    // handoff or bring-to-front. runFocusStep logs the failure rather than swallowing it.
+    await Promise.all([
+      runFocusStep('activate-pane', activatePane(paneId)), // instant within the active workspace
+      runFocusStep('focus-request', writeFocusRequest(paneId)), // Lua bridge handles cross-workspace jumps
+      runFocusStep('bring-to-front', bringToFront()),
+    ])
   } else if (action === 'send') {
     const { text } = JSON.parse(await readBody(req)) as { text: string }
     await sendText(paneId, text)

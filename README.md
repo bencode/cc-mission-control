@@ -51,9 +51,22 @@ dofile('/path/to/cc-mission-control/integrations/wezterm-focus.lua')
 ```
 
 The dashboard writes focus requests to `~/.cache/cc-mission-control/focus-request`; the
-bridge picks them up on the next status tick (≤1s) and performs the full
+bridge picks them up on the next `update-status` tick and performs the full
 workspace + tab + pane jump from inside the GUI, where `SwitchToWorkspace` is available.
 Without the bridge, focus still works within the current workspace.
+
+That tick fires every `status_update_interval` milliseconds — WezTerm's default is
+`1000`, so a cross-workspace jump can lag up to ~1s. For near-instant jumps, set this
+right next to the `dofile` above (before `return config`):
+
+```lua
+config.status_update_interval = 100
+```
+
+`100` is a good default. Bump it to `200`–`250` if you run other `update-status`
+handlers that do real work (battery / CPU / git status bars), since the interval is
+global. The bridge itself is cheap — with no request file it is one failing `io.open`
+per tick.
 
 ## How it works
 

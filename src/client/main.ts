@@ -35,7 +35,12 @@ const post = (path: string, body?: unknown): void => {
   })
 }
 
-const focusPane = (paneId: number): void => post(`/api/focus/${paneId}`)
+const focusPane = (paneId: number): void => {
+  // Optimistic: show the focus ring immediately. The next SSE event carries the real
+  // active pane and corrects this (tile.setActive ← renderHeader) within a tick.
+  entries.forEach((entry) => entry.tile.setActive(entry.snapshot.paneId === paneId))
+  post(`/api/focus/${paneId}`)
+}
 const sendToPane = (paneId: number, text: string): void => post(`/api/send/${paneId}`, { text })
 const closePane = (paneId: number): void => post(`/api/close/${paneId}`)
 

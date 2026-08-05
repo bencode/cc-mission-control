@@ -19,6 +19,8 @@ export type Tile = {
   root: HTMLElement
   /** Update the header (always) and the screen (only while mounted). */
   update: (snapshot: PaneSnapshot) => void
+  /** Optimistically toggle the focus ring; the next SSE snapshot corrects it. */
+  setActive: (active: boolean) => void
   /** Create the xterm terminal and render the current screen. */
   mount: (snapshot: PaneSnapshot) => void
   /** Dispose the terminal to free its canvas compositor layers. */
@@ -104,6 +106,18 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
     title.textContent = displayTitle(next.title)
   }
 
+  // Optimistic focus ring for click-to-focus: flip active without waiting for a poll.
+  // renderHeader owns the canonical className and overwrites this on the next SSE event
+  // (it recomputes the same string, so a successful focus won't flicker; a failed one
+  // self-corrects within a tick).
+  const setActive = (active: boolean): void => {
+    if (active === currentActive) return
+    currentActive = active
+    const status = currentStatus ?? snapshot.status
+    const agent = currentAgent ?? snapshot.agent
+    root.className = `tile status-${status} agent-${agent}${active ? ' active' : ''}`
+  }
+
   const mount = (next: PaneSnapshot): void => {
     if (terminal) return
     size = { cols: next.cols, rows: next.rows }
@@ -147,5 +161,5 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
   }
 
   renderHeader(snapshot)
-  return { root, update, mount, unmount, refit, isMounted: () => terminal !== null, dispose: () => terminal?.dispose() }
+  return { root, update, setActive, mount, unmount, refit, isMounted: () => terminal !== null, dispose: () => terminal?.dispose() }
 }

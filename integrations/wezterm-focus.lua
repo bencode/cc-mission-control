@@ -3,7 +3,9 @@
 -- `wezterm cli activate-pane` cannot switch the GUI's active workspace, so the
 -- dashboard writes the target pane id to a request file and this handler — which
 -- runs inside the WezTerm GUI, where SwitchToWorkspace is available — picks it
--- up on the next status tick (~1s) and performs the full jump.
+-- up on the next status tick and performs the full jump. The tick rate is
+-- Wezterm's status_update_interval (default 1000ms, so jumps can lag ~1s); set
+-- config.status_update_interval = 100 for near-instant cross-workspace jumps.
 --
 -- Install: add to your wezterm.lua, before `return config`:
 --   dofile('/path/to/cc-mission-control/integrations/wezterm-focus.lua')
