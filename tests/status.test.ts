@@ -42,6 +42,26 @@ test('shell: non-Claude titles', () => {
 
 test('codex: action-required title is waiting', () => {
   assert.equal(detectStatus('codex', '[ . ] Action Required | yimi', ''), 'waiting')
+  assert.equal(detectStatus('codex', '[ ! ] Action Required', ''), 'waiting')
+})
+
+test('codex: active selection control is waiting even without the title signal', () => {
+  const screen = fixture('codex-waiting.txt')
+  assert.equal(detectStatus('codex', 'yimi', screen), 'waiting')
+  assert.equal(detectStatus('codex', '⠹ yimi', screen), 'waiting')
+})
+
+test('codex: answered questions and normal prompts are idle', () => {
+  const answered = [
+    '• Questions 1/1 answered',
+    '  • 同时修复 MIME 参数判断？',
+    '    answer: 同时修复 (Recommended)',
+    '',
+    '› Explain this codebase',
+  ].join('\n')
+  assert.equal(detectStatus('codex', 'yimi', answered), 'idle')
+  assert.equal(detectStatus('codex', 'yimi', '› 1. A numbered line without an active control'), 'idle')
+  assert.equal(detectStatus('codex', 'yimi', 'enter to submit answer'), 'idle')
 })
 
 test('codex: braille title is working', () => {
@@ -59,6 +79,7 @@ test('claude: process match with plain project title is idle', () => {
 test('detectAgent prefers process signals but falls back to title heuristics', () => {
   assert.equal(detectAgent('cc-mission-control', 'codex'), 'codex')
   assert.equal(detectAgent('[ . ] Action Required | yimi'), 'codex')
+  assert.equal(detectAgent('[ ! ] Action Required'), 'codex')
   assert.equal(detectAgent('✳ Claude Code'), 'claude')
   assert.equal(detectAgent('cc-mission-control'), 'shell')
 })

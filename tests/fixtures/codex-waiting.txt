@@ -1,0 +1,9 @@
+  Question 1/1 (1 unanswered)
+  Codex waiting 识别应采用哪种兜底信号？
+
+  › 1. Title + 活跃控件 (Recommended)
+    2. 只扩展 Title
+    3. 所有普通 Prompt
+    4. None of the above
+
+  tab to add notes | enter to submit answer | esc to interrupt

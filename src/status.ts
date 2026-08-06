@@ -9,7 +9,7 @@ import type { AgentKind, SessionStatus } from './types.ts'
 const BRAILLE_START = 0x2800
 const BRAILLE_END = 0x28ff
 const IDLE_MARKER = '✳'
-const CODEX_ACTION_REQUIRED = /^\[\s*.\s*\]\s*Action Required\s*\|/
+const CODEX_ACTION_REQUIRED = /^\[\s*[!.]\s*\]\s*Action Required(?:\s*\|.*)?\s*$/
 
 const ANSI_PATTERN = new RegExp(
   [
@@ -32,6 +32,8 @@ export const stripAnsi = (text: string): string => text.replace(ANSI_PATTERN, ''
  * just because its conversational text is still on screen.
  */
 const WAITING_CURSOR = /❯\s+\d+\./
+const CODEX_WAITING_CURSOR = /^\s*›\s+\d+\./m
+const CODEX_WAITING_FOOTER = /\benter to (?:submit answer|select|confirm)\b/i
 
 // The live dialog is anchored to the bottom of the pane; a resolved one scrolls
 // up and collapses. Scanning only the tail keeps a stale cursor above from
@@ -39,6 +41,11 @@ const WAITING_CURSOR = /❯\s+\d+\./
 const TAIL_LINES = 30
 
 const tail = (text: string): string => text.split('\n').slice(-TAIL_LINES).join('\n')
+
+const isCodexWaitingScreen = (text: string): boolean => {
+  const visibleTail = tail(text)
+  return CODEX_WAITING_CURSOR.test(visibleTail) && CODEX_WAITING_FOOTER.test(visibleTail)
+}
 
 const isBrailleSpinner = (char: string): boolean => {
   const code = char.codePointAt(0) ?? 0
@@ -66,12 +73,13 @@ export const detectAgent = (
  */
 export const detectStatus = (agent: AgentKind, title: string, screenText: string): SessionStatus => {
   if (agent === 'shell') return 'shell'
-  if (isBrailleSpinner(title.charAt(0))) return 'working'
 
   if (agent === 'codex') {
-    return isCodexActionRequiredTitle(title) ? 'waiting' : 'idle'
+    if (isCodexActionRequiredTitle(title) || isCodexWaitingScreen(screenText)) return 'waiting'
+    return isBrailleSpinner(title.charAt(0)) ? 'working' : 'idle'
   }
 
+  if (isBrailleSpinner(title.charAt(0))) return 'working'
   if (!title.startsWith(IDLE_MARKER)) return 'idle'
   return WAITING_CURSOR.test(tail(screenText)) ? 'waiting' : 'idle'
 }
