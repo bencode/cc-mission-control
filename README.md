@@ -40,50 +40,42 @@ Environment variables:
 | `POLL_INTERVAL_MS` | `1000` | Screen capture interval |
 | `WEZTERM_BIN` | auto-detected | Path to the `wezterm` binary |
 
-## Cross-workspace focus (optional, recommended)
+## Click-to-focus bridge (required)
 
-`wezterm cli activate-pane` can only switch tabs within the active workspace — it cannot
-switch the GUI to another workspace. To make "Open in WezTerm" work across workspaces,
-load the bundled Lua bridge in your `wezterm.lua` (before `return config`):
-
-```lua
-dofile('/path/to/cc-mission-control/integrations/wezterm-focus.lua')
-```
-
-The dashboard writes focus requests to `~/.cache/cc-mission-control/focus-request`; the
-bridge picks them up on the next `update-status` tick and performs the full
-workspace + tab + pane jump from inside the GUI, where `SwitchToWorkspace` is available.
-Without the bridge, focus still works within the current workspace.
-
-That tick fires every `status_update_interval` milliseconds — WezTerm's default is
-`1000`, so a cross-workspace jump can lag up to ~1s. For near-instant jumps, set this
-right next to the `dofile` above (before `return config`):
+The dashboard uses one focus path for every card: a bundled Lua bridge that can switch
+the GUI workspace, tab, and pane. Load it in your `wezterm.lua` before `return config`:
 
 ```lua
-config.status_update_interval = 100
+local focus_bridge = '/path/to/cc-mission-control/integrations/wezterm-focus.lua'
+wezterm.add_to_config_reload_watch_list(focus_bridge)
+dofile(focus_bridge)
 ```
 
-`100` is a good default. Bump it to `200`–`250` if you run other `update-status`
-handlers that do real work (battery / CPU / git status bars), since the interval is
-global. The bridge itself is cheap — with no request file it is one failing `io.open`
-per tick.
+After installing the bridge, reload the WezTerm configuration or restart WezTerm once.
+The bridge then watches its own file, so later updates reload automatically. The
+dashboard writes short-lived focus requests to
+`~/.cache/cc-mission-control/focus-request`; the bridge checks for the latest request
+every `200ms`. Expired requests are discarded, so a delayed bridge
+cannot unexpectedly execute an old click.
+
+The bridge timer is independent of `status_update_interval`; with no request file each
+tick is only one failing `io.open`.
 
 ## How it works
 
 ```
-wezterm cli list ──┐
-wezterm cli get-text --escapes ──┤  poller (1s tick, per-pane content hash,
-                                 │          runs only while a client is connected)
-                                 ▼
-                       node:http server ── SSE ──▶ browser
-                                 ▲                  └─ one xterm.js instance per pane,
-   POST /api/focus ── activate-pane                    created at the pane's real cols×rows,
-   POST /api/send ──── send-text                       scaled down with CSS transform
+wezterm cli list/get-text ── screen poll (1s, sequential capture) ──┐
+wezterm cli list-clients ─── focus poll (250ms) ───────────────────┤
+                                                                   ▼
+                                                        node:http server ── SSE ──▶ browser
+                                                                   ▲
+POST /api/focus ── expiring mailbox ── Lua focus bridge ──────────┘
+POST /api/send ─── wezterm cli send-text
 ```
 
 - `src/wezterm.ts` — thin wrappers around `wezterm cli` (the only WezTerm-specific code; a tmux adapter would slot in here)
 - `src/status.ts` — pure functions mapping pane title + screen text to `working | waiting | idle | shell`
-- `src/poller.ts` — polling loop, emits only panes whose content changed
+- `src/poller.ts` — independent screen and focus polling, emits only changed panes
 - `src/server.ts` — SSE stream, focus/send actions, static files
 - `src/client/` — tile grid, xterm rendering, workspace grouping
 
@@ -97,7 +89,7 @@ pnpm typecheck
 ## Limitations
 
 - Only sees Claude Code and Codex sessions running inside WezTerm panes (not VS Code, web, or other terminals).
-- "Open in WezTerm" across workspaces requires the Lua bridge above; the WezTerm CLI alone cannot switch workspaces.
+- Card focus requires the Lua bridge above; the WezTerm CLI alone cannot switch workspaces consistently.
 - Status detection is heuristic — it parses pane titles, attached terminal processes, and selected visible-screen patterns. New Claude Code or Codex UI wording may need a pattern update in `src/status.ts`.
 - The approve button sends the keystroke `1`, which selects "Yes" in current permission dialogs.
 

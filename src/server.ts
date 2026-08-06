@@ -4,7 +4,6 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { createPoller } from './poller.ts'
 import type { StreamEvent } from './types.ts'
 import {
-  activatePane,
   bringToFront,
   clearFocusRequest,
   killPane,
@@ -14,6 +13,7 @@ import {
 
 const PORT = Number(process.env.PORT ?? 6080)
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 1000)
+const FOCUS_REQUEST_TTL_SECONDS = 4
 
 const STATIC_FILES: Record<string, { path: string; type: string }> = {
   '/': { path: 'public/index.html', type: 'text/html; charset=utf-8' },
@@ -59,17 +59,7 @@ const readBody = async (req: IncomingMessage): Promise<string> => {
   return Buffer.concat(chunks).toString()
 }
 
-/** Run one focus step, logging a rejection instead of letting it abort the others.
-    Focus is best-effort: a stale pane id (closed since the last poll) or a busy GUI
-    can reject one step, but the cross-workspace handoff and bring-to-front should
-    still run. */
-const runFocusStep = async (label: string, task: Promise<unknown>): Promise<void> => {
-  try {
-    await task
-  } catch (error) {
-    console.warn(`focus step ${label} failed:`, error)
-  }
-}
+let focusRequestId = 0
 
 const handleAction = async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> => {
   const [, , action, idPart] = url.pathname.split('/')
@@ -79,14 +69,15 @@ const handleAction = async (req: IncomingMessage, res: ServerResponse, url: URL)
     return
   }
   if (action === 'focus') {
-    // Run the three steps in parallel (total = max, not sum) and tolerate a single
-    // step failing — a stale pane id or a busy GUI must not abort the cross-workspace
-    // handoff or bring-to-front. runFocusStep logs the failure rather than swallowing it.
-    await Promise.all([
-      runFocusStep('activate-pane', activatePane(paneId)), // instant within the active workspace
-      runFocusStep('focus-request', writeFocusRequest(paneId)), // Lua bridge handles cross-workspace jumps
-      runFocusStep('bring-to-front', bringToFront()),
-    ])
+    focusRequestId += 1
+    await writeFocusRequest({
+      requestId: focusRequestId,
+      paneId,
+      expiresAtSeconds: Math.floor(Date.now() / 1000) + FOCUS_REQUEST_TTL_SECONDS,
+    })
+    void bringToFront().catch((error) => console.warn('bring-to-front failed:', error))
+    res.writeHead(202).end()
+    return
   } else if (action === 'send') {
     const { text } = JSON.parse(await readBody(req)) as { text: string }
     await sendText(paneId, text)
@@ -117,13 +108,12 @@ const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> 
   return handleStatic(res, url.pathname)
 }
 
+await clearFocusRequest()
+
 createServer((req, res) => {
   handle(req, res).catch((error) => {
     console.error(`${req.method} ${req.url} failed:`, error)
     if (!res.headersSent) res.writeHead(500)
     res.end()
   })
-}).listen(PORT, () => {
-  void clearFocusRequest()
-  console.log(`cc-mission-control listening on http://localhost:${PORT}`)
-})
+}).listen(PORT, () => console.log(`cc-mission-control listening on http://localhost:${PORT}`))

@@ -26,6 +26,13 @@ const statusGroups = new Map<SessionStatus, HTMLElement>() // status → <sectio
 const wsSections = new Map<string, HTMLElement>() // `${status} ${workspace}` → <section class="workspace">
 
 const wsKey = (status: SessionStatus, workspace: string): string => `${status} ${workspace}`
+const FOCUS_TIMEOUT_MS = 5_000
+
+type PendingFocus = {
+  generation: number
+  paneId: number
+  timeoutId: number
+}
 
 const post = (path: string, body?: unknown): void => {
   void fetch(path, {
@@ -35,11 +42,43 @@ const post = (path: string, body?: unknown): void => {
   })
 }
 
+let focusGeneration = 0
+let pendingFocus: PendingFocus | undefined
+
+const clearPendingFocus = (generation?: number): void => {
+  if (!pendingFocus || (generation !== undefined && pendingFocus.generation !== generation)) return
+  clearTimeout(pendingFocus.timeoutId)
+  pendingFocus = undefined
+  entries.forEach((entry) => entry.tile.setPending(false))
+}
+
+const requestFocus = async (paneId: number): Promise<void> => {
+  const response = await fetch(`/api/focus/${paneId}`, { method: 'POST' })
+  if (response.status !== 202) throw new Error(`focus request failed with ${response.status}`)
+}
+
 const focusPane = (paneId: number): void => {
-  // Optimistic: show the focus ring immediately. The next SSE event carries the real
-  // active pane and corrects this (tile.setActive ← renderHeader) within a tick.
-  entries.forEach((entry) => entry.tile.setActive(entry.snapshot.paneId === paneId))
-  post(`/api/focus/${paneId}`)
+  const generation = ++focusGeneration
+  clearPendingFocus()
+
+  if (entries.get(paneId)?.snapshot.active) {
+    void requestFocus(paneId).catch((error) => console.warn('focus request failed:', error))
+    return
+  }
+
+  entries.get(paneId)?.tile.setPending(true)
+  const timeoutId = window.setTimeout(() => {
+    if (pendingFocus?.generation !== generation) return
+    console.warn(`focus request for pane ${paneId} timed out`)
+    clearPendingFocus(generation)
+  }, FOCUS_TIMEOUT_MS)
+  pendingFocus = { generation, paneId, timeoutId }
+
+  void requestFocus(paneId).catch((error) => {
+    if (pendingFocus?.generation !== generation) return
+    console.warn('focus request failed:', error)
+    clearPendingFocus(generation)
+  })
 }
 const sendToPane = (paneId: number, text: string): void => post(`/api/send/${paneId}`, { text })
 const closePane = (paneId: number): void => post(`/api/close/${paneId}`)
@@ -196,6 +235,7 @@ const upsert = (snapshot: PaneSnapshot): void => {
     return
   }
   const tile = createTile(snapshot, { onZoom: openZoom, onFocus: focusPane, onSend: sendToPane, onClose: closePane })
+  tile.setPending(pendingFocus?.paneId === snapshot.paneId)
   entries.set(snapshot.paneId, {
     tile,
     snapshot: { ...snapshot, screen: undefined },
@@ -244,6 +284,12 @@ const handleEvent = (event: StreamEvent): void => {
     .filter((p) => p.paneId === zoom.openPaneId())
     .forEach((p) => zoom.update(document.hidden ? { ...p, screen: undefined } : p))
   event.removed.forEach(remove)
+  if (
+    pendingFocus &&
+    (event.removed.includes(pendingFocus.paneId) || entries.get(pendingFocus.paneId)?.snapshot.active)
+  ) {
+    clearPendingFocus(pendingFocus.generation)
+  }
   followActive(event)
   scrollFollowArmed = true
   refreshSummary()

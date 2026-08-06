@@ -19,8 +19,8 @@ export type Tile = {
   root: HTMLElement
   /** Update the header (always) and the screen (only while mounted). */
   update: (snapshot: PaneSnapshot) => void
-  /** Optimistically toggle the focus ring; the next SSE snapshot corrects it. */
-  setActive: (active: boolean) => void
+  /** Show a focus request in flight without changing the SSE-owned active state. */
+  setPending: (pending: boolean) => void
   /** Create the xterm terminal and render the current screen. */
   mount: (snapshot: PaneSnapshot) => void
   /** Dispose the terminal to free its canvas compositor layers. */
@@ -93,6 +93,13 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
   let currentAgent: AgentKind | undefined
   let currentStatus: SessionStatus | undefined
   let currentActive: boolean | undefined
+  let currentPending = false
+
+  const renderClassName = (): void => {
+    const agent = currentAgent ?? snapshot.agent
+    const status = currentStatus ?? snapshot.status
+    root.className = `tile status-${status} agent-${agent}${currentActive ? ' active' : ''}${currentPending ? ' pending-focus' : ''}`
+  }
 
   const renderHeader = (next: PaneSnapshot): void => {
     const active = next.active ?? false
@@ -100,22 +107,16 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
       currentAgent = next.agent
       currentStatus = next.status
       currentActive = active
-      root.className = `tile status-${next.status} agent-${next.agent}${active ? ' active' : ''}`
+      renderClassName()
       status.textContent = next.agent === 'shell' ? next.status : `${next.agent} ${next.status}`
     }
     title.textContent = displayTitle(next.title)
   }
 
-  // Optimistic focus ring for click-to-focus: flip active without waiting for a poll.
-  // renderHeader owns the canonical className and overwrites this on the next SSE event
-  // (it recomputes the same string, so a successful focus won't flicker; a failed one
-  // self-corrects within a tick).
-  const setActive = (active: boolean): void => {
-    if (active === currentActive) return
-    currentActive = active
-    const status = currentStatus ?? snapshot.status
-    const agent = currentAgent ?? snapshot.agent
-    root.className = `tile status-${status} agent-${agent}${active ? ' active' : ''}`
+  const setPending = (pending: boolean): void => {
+    if (pending === currentPending) return
+    currentPending = pending
+    renderClassName()
   }
 
   const mount = (next: PaneSnapshot): void => {
@@ -161,5 +162,5 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
   }
 
   renderHeader(snapshot)
-  return { root, update, setActive, mount, unmount, refit, isMounted: () => terminal !== null, dispose: () => terminal?.dispose() }
+  return { root, update, setPending, mount, unmount, refit, isMounted: () => terminal !== null, dispose: () => terminal?.dispose() }
 }

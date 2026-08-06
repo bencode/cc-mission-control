@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -50,24 +50,20 @@ type WeztermClient = { focused_pane_id: number; idle_time: { secs: number } }
  * tab's active pane, so it can't tell us this; `list-clients` can. With several
  * clients (multiple GUI windows), the least-idle one is the live one.
  */
-export const focusedPaneId = async (): Promise<number | null> => {
+export const focusedPaneId = async (): Promise<number | null | undefined> => {
   try {
     const clients = JSON.parse(await run(['cli', 'list-clients', '--format', 'json'])) as WeztermClient[]
     if (clients.length === 0) return null
     return clients.reduce((a, b) => (b.idle_time.secs < a.idle_time.secs ? b : a)).focused_pane_id
   } catch (error) {
     console.warn('wezterm list-clients failed; focused-pane tracking degraded:', error)
-    return null // older wezterm without list-clients, or no GUI client attached
+    return undefined // preserve the last known focus across transient cli failures
   }
 }
 
 /** Capture the visible screen of a pane, including ANSI color escapes. */
 export const getScreen = (paneId: number): Promise<string> =>
   run(['cli', 'get-text', '--pane-id', String(paneId), '--escapes'])
-
-export const activatePane = async (paneId: number): Promise<void> => {
-  await run(['cli', 'activate-pane', '--pane-id', String(paneId)])
-}
 
 export const sendText = async (paneId: number, text: string): Promise<void> => {
   await run(['cli', 'send-text', '--pane-id', String(paneId), '--no-paste', '--', text])
@@ -84,21 +80,36 @@ export const bringToFront = async (): Promise<void> => {
   await execFileAsync('osascript', ['-e', 'tell application "WezTerm" to activate'])
 }
 
-/**
- * `activate-pane` cannot switch the GUI's active workspace, so cross-workspace
- * focus goes through a request file picked up by the optional Lua bridge
- * (see integrations/wezterm-focus.lua) running inside WezTerm.
- */
+/** The Lua bridge is the sole focus executor, for both same- and cross-workspace jumps. */
 const FOCUS_REQUEST_DIR = join(homedir(), '.cache', 'cc-mission-control')
 const FOCUS_REQUEST_FILE = join(FOCUS_REQUEST_DIR, 'focus-request')
+const FOCUS_REQUEST_TEMP_FILE = join(FOCUS_REQUEST_DIR, 'focus-request.tmp')
 
-export const serializeFocusRequest = (paneId: number): string => `${paneId}\n`
+export type FocusRequest = {
+  requestId: number
+  paneId: number
+  expiresAtSeconds: number
+}
 
-export const writeFocusRequest = async (paneId: number): Promise<void> => {
-  await mkdir(FOCUS_REQUEST_DIR, { recursive: true })
-  await writeFile(FOCUS_REQUEST_FILE, serializeFocusRequest(paneId))
+export const serializeFocusRequest = (request: FocusRequest): string =>
+  `v1\t${request.requestId}\t${request.paneId}\t${request.expiresAtSeconds}\n`
+
+let focusWrite = Promise.resolve()
+
+export const writeFocusRequest = (request: FocusRequest): Promise<void> => {
+  const pending = focusWrite.then(async () => {
+    await mkdir(FOCUS_REQUEST_DIR, { recursive: true })
+    await writeFile(FOCUS_REQUEST_TEMP_FILE, serializeFocusRequest(request))
+    await rename(FOCUS_REQUEST_TEMP_FILE, FOCUS_REQUEST_FILE)
+  })
+  focusWrite = pending.catch(() => undefined)
+  return pending
 }
 
 /** Drop any request left over from a previous run (e.g. bridge not installed yet). */
-export const clearFocusRequest = (): Promise<void> =>
-  rm(FOCUS_REQUEST_FILE, { force: true })
+export const clearFocusRequest = async (): Promise<void> => {
+  await Promise.all([
+    rm(FOCUS_REQUEST_FILE, { force: true }),
+    rm(FOCUS_REQUEST_TEMP_FILE, { force: true }),
+  ])
+}

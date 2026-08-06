@@ -8,6 +8,10 @@ import { focusedPaneId, getScreen, listPanes, type WeztermPane } from './wezterm
 type PaneState = { hash: string; snapshot: PaneSnapshot }
 
 const hashOf = (text: string): string => createHash('sha1').update(text).digest('hex')
+const FOCUS_INTERVAL_MS = 250
+
+const snapshotHash = (snapshot: PaneSnapshot): string =>
+  hashOf(`${snapshot.agent}\0${snapshot.title}\0${snapshot.active}\0${snapshot.screen ?? ''}`)
 
 const toSnapshot = (
   pane: WeztermPane,
@@ -51,58 +55,84 @@ export type Poller = {
 export const createPoller = (intervalMs: number): Poller => {
   const states = new Map<number, PaneState>()
   const listeners = new Set<(event: StreamEvent) => void>()
-  let timer: NodeJS.Timeout | undefined
-  let ticking = false
+  let screenTimer: NodeJS.Timeout | undefined
+  let focusTimer: NodeJS.Timeout | undefined
+  let screenTicking = false
+  let focusTicking = false
 
-  const tick = async (): Promise<void> => {
-    const [panes, focusedId, processAgents] = await Promise.all([
+  const emit = (panes: PaneSnapshot[], removed: number[] = []): void => {
+    if (panes.length === 0 && removed.length === 0) return
+    const event: StreamEvent = { panes, removed }
+    listeners.forEach((listener) => listener(event))
+  }
+
+  const store = (snapshot: PaneSnapshot): boolean => {
+    const hash = snapshotHash(snapshot)
+    if (states.get(snapshot.paneId)?.hash === hash) return false
+    states.set(snapshot.paneId, { hash, snapshot })
+    return true
+  }
+
+  const screenTick = async (): Promise<void> => {
+    const [panes, processAgents] = await Promise.all([
       listPanes(),
-      focusedPaneId(),
       listAgentProcesses().catch((error) => {
         console.error('agent process listing failed:', error)
         return new Map<string, Exclude<AgentKind, 'shell'>>()
       }),
     ])
-    const captured = await Promise.all(
-      panes.map(async (pane) => {
-        const tty = pane.tty_name?.replace(/^\/dev\//, '')
-        const snapshot = await capturePane(pane, tty ? processAgents.get(tty) : undefined)
-        return { paneId: pane.pane_id, snapshot }
-      }),
-    )
-
     const changed: PaneSnapshot[] = []
-    const seen = new Set<number>()
-    for (const { paneId, snapshot } of captured) {
-      // A pane in the list is alive even when its capture failed (transient cli
-      // error or timeout); only panes missing from the list count as removed.
-      seen.add(paneId)
+    const seen = new Set(panes.map((pane) => pane.pane_id))
+
+    // Sequential capture avoids flooding the WezTerm mux with one cli process per pane.
+    for (const pane of panes) {
+      const tty = pane.tty_name?.replace(/^\/dev\//, '')
+      const snapshot = await capturePane(pane, tty ? processAgents.get(tty) : undefined)
       if (snapshot === null) continue
-      const next: PaneSnapshot = { ...snapshot, active: snapshot.paneId === focusedId }
-      // active is in the hash so focus moves repaint even when title/screen are unchanged
-      const hash = hashOf(`${next.agent}\0${next.title}\0${next.active}\0${next.screen ?? ''}`)
-      if (states.get(next.paneId)?.hash === hash) continue
-      states.set(next.paneId, { hash, snapshot: next })
-      changed.push(next)
+      const next = { ...snapshot, active: states.get(snapshot.paneId)?.snapshot.active ?? false }
+      if (store(next)) changed.push(next)
     }
 
     const removed = [...states.keys()].filter((id) => !seen.has(id))
     removed.forEach((id) => states.delete(id))
-
-    if (changed.length === 0 && removed.length === 0) return
-    const event: StreamEvent = { panes: changed, removed }
-    listeners.forEach((listener) => listener(event))
+    emit(changed, removed)
   }
 
-  const safeTick = async (): Promise<void> => {
-    if (ticking) return // skip overlapping ticks when capture is slow
-    ticking = true
+  const focusTick = async (): Promise<void> => {
+    const focusedId = await focusedPaneId()
+    if (focusedId === undefined) return
+    const changed: PaneSnapshot[] = []
+    states.forEach((state) => {
+      const active = state.snapshot.paneId === focusedId
+      if ((state.snapshot.active ?? false) === active) return
+      const next = { ...state.snapshot, active }
+      store(next)
+      changed.push({ ...next, screen: undefined })
+    })
+    emit(changed)
+  }
+
+  const safeScreenTick = async (): Promise<void> => {
+    if (screenTicking) return
+    screenTicking = true
     try {
-      await tick()
+      await screenTick()
     } catch (error) {
-      console.error('poll tick failed:', error)
+      console.error('screen poll failed:', error)
     } finally {
-      ticking = false
+      screenTicking = false
+    }
+  }
+
+  const safeFocusTick = async (): Promise<void> => {
+    if (focusTicking) return
+    focusTicking = true
+    try {
+      await focusTick()
+    } catch (error) {
+      console.error('focus poll failed:', error)
+    } finally {
+      focusTicking = false
     }
   }
 
@@ -113,13 +143,17 @@ export const createPoller = (intervalMs: number): Poller => {
       return () => listeners.delete(listener)
     },
     start: () => {
-      if (timer !== undefined) return
-      void safeTick()
-      timer = setInterval(() => void safeTick(), intervalMs)
+      if (screenTimer !== undefined) return
+      void safeScreenTick()
+      void safeFocusTick()
+      screenTimer = setInterval(() => void safeScreenTick(), intervalMs)
+      focusTimer = setInterval(() => void safeFocusTick(), FOCUS_INTERVAL_MS)
     },
     stop: () => {
-      clearInterval(timer)
-      timer = undefined
+      clearInterval(screenTimer)
+      clearInterval(focusTimer)
+      screenTimer = undefined
+      focusTimer = undefined
     },
   }
 }
