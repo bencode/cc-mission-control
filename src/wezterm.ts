@@ -29,6 +29,13 @@ const CLI_TIMEOUT_MS = 5_000
 const run = (args: string[]): Promise<string> =>
   execFileAsync(WEZTERM_BIN, args, { maxBuffer: MAX_BUFFER, timeout: CLI_TIMEOUT_MS }).then((r) => r.stdout)
 
+const isMissingPaneError = (error: unknown, paneId: number): boolean =>
+  typeof error === 'object' &&
+  error !== null &&
+  'stderr' in error &&
+  typeof error.stderr === 'string' &&
+  error.stderr.includes(`Error: no such pane ${paneId}`)
+
 export type WeztermPane = {
   window_id: number
   tab_id: number
@@ -62,8 +69,14 @@ export const focusedPaneId = async (): Promise<number | null | undefined> => {
 }
 
 /** Capture the visible screen of a pane, including ANSI color escapes. */
-export const getScreen = (paneId: number): Promise<string> =>
-  run(['cli', 'get-text', '--pane-id', String(paneId), '--escapes'])
+export const getScreen = async (paneId: number): Promise<string | null> => {
+  try {
+    return await run(['cli', 'get-text', '--pane-id', String(paneId), '--escapes'])
+  } catch (error) {
+    if (isMissingPaneError(error, paneId)) return null
+    throw error
+  }
+}
 
 export const sendText = async (paneId: number, text: string): Promise<void> => {
   await run(['cli', 'send-text', '--pane-id', String(paneId), '--no-paste', '--', text])

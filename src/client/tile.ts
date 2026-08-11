@@ -131,6 +131,8 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
       cursorBlink: false,
       theme: TERMINAL_THEME,
     })
+    // Read-only tiles leave wheel gestures to the page instead of xterm.
+    terminal.attachCustomWheelEventHandler(() => false)
     terminal.open(screen)
     terminal.loadAddon(new CanvasAddon()) // after open(), before first write()
     if (next.screen !== undefined) writer.write(next.screen)

@@ -37,10 +37,11 @@ const capturePane = async (
   processAgent?: Exclude<AgentKind, 'shell'>,
 ): Promise<PaneSnapshot | null> => {
   try {
-    return toSnapshot(pane, await getScreen(pane.pane_id), processAgent)
+    const screen = await getScreen(pane.pane_id)
+    return screen === null ? null : toSnapshot(pane, screen, processAgent)
   } catch (error) {
     console.warn(`capture failed for pane ${pane.pane_id}:`, error)
-    return null // pane may have closed between list and capture
+    return null
   }
 }
 
