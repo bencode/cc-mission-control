@@ -2,21 +2,29 @@
 
 A mission-control dashboard for [Claude Code](https://claude.com/claude-code) and Codex sessions running in [WezTerm](https://wezterm.org).
 
-When you run a dozen agent sessions across WezTerm workspaces and tabs, you lose track of who is working, who is stuck waiting for your approval, and who has been idle for an hour. This tool gives you the movie-style control-room wall: every session as a live, full-color terminal thumbnail, grouped by workspace, with status at a glance.
+Monitor Claude Code and Codex sessions in one dense, live terminal wall. The UI keeps every visible session's full terminal preview, with an in-grid reading view for the agent you want to inspect.
 
 ![Status](https://img.shields.io/badge/status-experimental-orange)
 
-![CC Mission Control dashboard](docs/screenshot.png)
+![CC Mission Control live terminal wall with an expanded session](docs/screenshot.png)
 
-> Live capture of a real session wall, grouped by workspace. The violet ring marks the pane currently focused in WezTerm; waiting sessions pulse amber with an Approve button right on the tile.
+The live terminal wall keeps other agents visible while one session expands in place for reading. Search, workspace and status filters help you find the next session to inspect.
 
 ## Features
 
-- **Live terminal thumbnails** — each pane rendered by xterm.js from WezTerm's ANSI screen dump, scaled down. What you see is exactly what the terminal shows, in color.
-- **Status detection, zero config** — Claude Code and Codex sessions are detected from WezTerm pane titles plus attached terminal processes. Claude title markers and Codex action-required titles map to `working | waiting | idle`, with permission dialogs and approvals shown as `waiting` with an amber pulse.
-- **Click to zoom** — click a tile to open the session near full size in a lightbox (live-updating), so you can read exactly what is on screen before acting. Jump to the pane in WezTerm from there, or press Escape to go back to the wall.
-- **Quick approve, with eyes open** — sessions blocked on a permission prompt show `✓ Approve` / `✗ Esc` buttons on both the tile and the zoom view: glance at the title for routine prompts, or zoom in to read the full dialog before approving.
-- **Workspace grouping & summary** — tiles grouped by WezTerm workspace; the top bar breaks `working · waiting · idle` down by Codex/Claude counts, reports the shell total, and the page title flags all waiting sessions for your browser tab.
+- **Continuous terminal wall** — sessions fill one grid, ordered by waiting, working, idle, then shell; workspace labels stay inside the cards. Auto columns adapt to the window, up to five columns. On a 1536×1024 desktop, the compact layout fits 20 normal cards.
+- **Search and filters** — combine title/workspace/directory search, a workspace selector, and status filters. Shell sessions are hidden by default. Filters change only the displayed cards.
+- **Expand in place** — click a card to move it to the start of its row and expand it across two columns and two rows. Other terminals keep updating. Status changes do not reorder cards during reading; collapse restores the normal order. On a single-column screen, expansion uses one column.
+- **Readable output** — small previews fit the entire terminal screen. Expanded cards use 14px text and native scrolling, following the bottom until you scroll away. Maximize opens a larger reading view; Back or Escape returns to the expanded card.
+- **Explicit actions** — Open in WezTerm uses the existing focus bridge. Approve (send 1) and Send Esc send the same keys as before. Close session still requires two clicks within three seconds. Action controls appear in the expanded and maximized views.
+- **Next waiting** — cycles through waiting sessions in the current filters. The currently expanded session remains open when its status changes; new waiting sessions do not take over the reading view.
+- **Focus and connection indicators** — Active in WezTerm identifies the actual terminal focus independently of the expanded card. External focus follows the original scrolling behavior in the overview, but does not scroll away from an expanded reading view. Reconnecting indicates potentially stale screens.
+
+### Keyboard and display controls
+
+Tab to a card title and press Enter or Space to expand/collapse it. Escape closes the maximized view first, then collapses the in-grid view; it does not send Escape to WezTerm. The column selector retains each browser's preference, with narrow windows limiting the actual number of columns. Full screen uses the browser's fullscreen mode.
+
+The terminal capture, agent/status detection, SSE and reconnection, viewport-based mounting, screen writer, and focus/send/close endpoints are unchanged. The UI does not add terminal input, history, task inference, automatic approval, or retries.
 
 ## Requirements
 
@@ -42,7 +50,7 @@ Environment variables:
 
 ## Click-to-focus bridge (required)
 
-The dashboard uses one focus path for every card: a bundled Lua bridge that can switch
+The dashboard uses one focus path for every session: a bundled Lua bridge that can switch
 the GUI workspace, tab, and pane. Load it in your `wezterm.lua` before `return config`:
 
 ```lua
@@ -77,7 +85,7 @@ POST /api/send ─── wezterm cli send-text
 - `src/status.ts` — pure functions mapping pane title + screen text to `working | waiting | idle | shell`
 - `src/poller.ts` — independent screen and focus polling, emits only changed panes
 - `src/server.ts` — SSE stream, focus/send actions, static files
-- `src/client/` — tile grid, xterm rendering, workspace grouping
+- `src/client/` — continuous tile grid, filtering, in-grid expansion, and xterm reading views
 
 ## Development
 
@@ -91,7 +99,7 @@ pnpm typecheck
 - Only sees Claude Code and Codex sessions running inside WezTerm panes (not VS Code, web, or other terminals).
 - Card focus requires the Lua bridge above; the WezTerm CLI alone cannot switch workspaces consistently.
 - Status detection is heuristic — it parses pane titles, attached terminal processes, and selected visible-screen patterns. New Claude Code or Codex UI wording may need a pattern update in `src/status.ts`.
-- The approve button sends the keystroke `1`, which selects "Yes" in current permission dialogs.
+- Approve (send 1) sends the literal keystroke `1`. Read the current prompt before acting; waiting status detection is heuristic.
 
 ## License
 

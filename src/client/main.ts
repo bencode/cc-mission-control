@@ -2,7 +2,7 @@ import '@xterm/xterm/css/xterm.css'
 
 import type { PaneSnapshot, SessionStatus, StreamEvent } from '../types.ts'
 import { createTile, type Tile } from './tile.ts'
-import { renderSessionSummary, summarizeSessions } from './ui.ts'
+import { updateSessionSummary, summarizeSessions } from './ui.ts'
 import { createZoom } from './zoom.ts'
 
 type Entry = {
@@ -11,10 +11,6 @@ type Entry = {
   /** Latest full screen; stream events omit `screen` when unchanged. */
   lastScreen?: string
   inViewport: boolean
-  /** Current placement, tracked so a status/workspace change can re-parent the tile
-      and prune the section it left behind. */
-  status: SessionStatus
-  workspace: string
 }
 
 const STATUS_ORDER: Record<SessionStatus, number> = { waiting: 0, working: 1, idle: 2, shell: 3 }
@@ -22,10 +18,15 @@ const STATUS_ORDER: Record<SessionStatus, number> = { waiting: 0, working: 1, id
 const board = document.querySelector('#board') as HTMLElement
 const summary = document.querySelector('#summary') as HTMLElement
 const entries = new Map<number, Entry>()
-const statusGroups = new Map<SessionStatus, HTMLElement>() // status → <section class="status-group">
-const wsSections = new Map<string, HTMLElement>() // `${status} ${workspace}` → <section class="workspace">
+let expandedPaneId: number | null = null
+let expandedOrder: number[] | null = null
+let columnCount = 5
+let selectedStatus: SessionStatus | 'all' = 'all'
+let receivedSnapshot = false
+const search = document.querySelector('#session-search') as HTMLInputElement
+const workspaceFilter = document.querySelector('#workspace-select') as HTMLSelectElement
+const shellToggle = document.querySelector('#show-shells') as HTMLInputElement
 
-const wsKey = (status: SessionStatus, workspace: string): string => `${status} ${workspace}`
 const FOCUS_TIMEOUT_MS = 5_000
 
 type PendingFocus = {
@@ -143,74 +144,103 @@ const viewport = new IntersectionObserver(
   { rootMargin: '300px' },
 )
 
-const STATUS_LABEL: Record<SessionStatus, string> = { waiting: 'WAITING', working: 'WORKING', idle: 'IDLE', shell: 'SHELL' }
-
-const statusGroupFor = (status: SessionStatus): HTMLElement => {
-  const existing = statusGroups.get(status)
-  if (existing) return existing
-  const group = document.createElement('section')
-  group.className = `status-group status-${status}`
-  group.dataset.status = status
-  group.innerHTML = `<header class="status-group-header"><h2>${STATUS_LABEL[status]}</h2><span class="count"></span><span class="split"></span></header><div class="status-body"></div>`
-  statusGroups.set(status, group)
-  const ordered = [...statusGroups.keys()].sort((a, b) => STATUS_ORDER[a] - STATUS_ORDER[b])
-  board.insertBefore(group, board.children[ordered.indexOf(status)] ?? null)
-  return group
+const visibleEntries = (): Entry[] => {
+  const query = search.value.trim().toLocaleLowerCase()
+  return [...entries.values()].filter(({ snapshot }) =>
+    (shellToggle.checked || snapshot.status !== 'shell')
+    && (selectedStatus === 'all' || snapshot.status === selectedStatus)
+    && (!workspaceFilter.value || snapshot.workspace === workspaceFilter.value)
+    && [snapshot.title, snapshot.workspace, snapshot.cwd].some((value) => value.toLocaleLowerCase().includes(query)),
+  ).sort((a, b) => STATUS_ORDER[a.snapshot.status] - STATUS_ORDER[b.snapshot.status]
+    || a.snapshot.workspace.localeCompare(b.snapshot.workspace) || a.snapshot.paneId - b.snapshot.paneId)
 }
 
-const workspaceSectionFor = (status: SessionStatus, workspace: string): HTMLElement => {
-  const key = wsKey(status, workspace)
-  const existing = wsSections.get(key)
-  if (existing) return existing
-  const section = document.createElement('section')
-  section.className = 'workspace'
-  section.dataset.workspace = workspace
-  section.innerHTML = `<h3>${workspace}</h3><div class="tiles"></div>`
-  wsSections.set(key, section)
-  const body = statusGroupFor(status).querySelector('.status-body') as HTMLElement
-  const ordered = [...body.children].map((el) => (el as HTMLElement).dataset.workspace ?? '')
-  ordered.push(workspace)
-  ordered.sort()
-  body.insertBefore(section, body.children[ordered.indexOf(workspace)] ?? null)
-  return section
+const clearExpansion = (): number | null => {
+  const id = expandedPaneId
+  if (id !== null) entries.get(id)?.tile.setExpanded(false)
+  expandedPaneId = null
+  expandedOrder = null
+  return id
 }
 
-/** Drop a (status, workspace) section once its tiles empty out, and the whole status
-    group when it has no workspace sections left. Called after a tile leaves or is removed. */
-const prune = (status: SessionStatus, workspace: string): void => {
-  const key = wsKey(status, workspace)
-  const section = wsSections.get(key)
-  if (section && section.querySelector('.tiles')?.children.length === 0) {
-    section.remove()
-    wsSections.delete(key)
+const refreshBoard = (): void => {
+  const visible = visibleEntries()
+  const ids = visible.map((entry) => entry.snapshot.paneId)
+  const visibleIds = new Set(ids)
+  if (expandedPaneId !== null && !visibleIds.has(expandedPaneId)) {
+    clearExpansion()
+    zoom.close()
   }
-  const group = statusGroups.get(status)
-  if (group && group.querySelector('.workspace') === null) {
-    group.remove()
-    statusGroups.delete(status)
+  const order = expandedOrder === null ? ids
+    : [...expandedOrder.filter((id) => visibleIds.has(id)), ...ids.filter((id) => !expandedOrder?.includes(id))]
+  if (expandedOrder !== null) expandedOrder = order
+  const focused = document.activeElement
+  entries.forEach((entry, id) => { entry.tile.root.hidden = !visibleIds.has(id) })
+  order.forEach((id, index) => {
+    const root = entries.get(id)!.tile.root
+    if (board.children[index] !== root) board.insertBefore(root, board.children[index] ?? null)
+  })
+  if (focused instanceof HTMLElement && board.contains(focused) && focused.getClientRects().length) {
+    focused.focus({ preventScroll: true })
   }
+  const nextEnabled = visible.some((entry) => entry.snapshot.status === 'waiting' && entry.snapshot.paneId !== expandedPaneId)
+  if (expandedPaneId !== null) entries.get(expandedPaneId)?.tile.setNextWaiting(nextEnabled)
+  document.querySelector('#visible-count')!.textContent = `${ids.length} visible`
+  const empty = document.querySelector('#empty-state') as HTMLElement
+  empty.hidden = ids.length > 0
+  empty.querySelector('h2')!.textContent = receivedSnapshot ? 'No sessions to show' : 'Waiting for sessions…'
+  const filtered = Boolean(search.value || workspaceFilter.value || selectedStatus !== 'all')
+  document.querySelector('#empty-message')!.textContent = filtered
+    ? 'Try another search or clear your filters.' : 'Start a session in WezTerm to see it here.'
+  ;(document.querySelector('#clear-filters') as HTMLElement).hidden = !filtered
 }
 
 const refreshSummary = (): void => {
   const counts = summarizeSessions([...entries.values()].map((entry) => entry.snapshot))
-  summary.replaceChildren(renderSessionSummary(counts))
+  updateSessionSummary(summary, counts, selectedStatus, shellToggle.checked)
   const waiting = counts.waiting.codex + counts.waiting.claude
-  document.title = waiting > 0 ? `(${waiting}!) Mission Control` : 'Mission Control'
-  // Repaint each present status section's header count (and codex·claude split) from
-  // the same totals.
-  for (const status of statusGroups.keys()) {
-    const group = statusGroups.get(status)!
-    const countEl = group.querySelector('.count')
-    const splitEl = group.querySelector('.split')
-    if (status === 'shell') {
-      if (countEl) countEl.textContent = String(counts.shell)
-      if (splitEl) splitEl.textContent = ''
-      continue
-    }
-    const { codex, claude } = counts[status]
-    if (countEl) countEl.textContent = String(codex + claude)
-    if (splitEl) splitEl.textContent = codex || claude ? `(${codex}·${claude})` : ''
+  document.title = waiting > 0 ? `(${waiting} waiting) Mission Control` : 'Mission Control'
+  const current = workspaceFilter.value
+  const names = [...new Set([...entries.values()].map((entry) => entry.snapshot.workspace))].sort()
+  if (current && !names.includes(current)) names.push(current)
+  const existing = [...workspaceFilter.options].slice(1).map((option) => option.value)
+  if (names.length !== existing.length || names.some((name, index) => name !== existing[index])) {
+    workspaceFilter.replaceChildren(new Option('All workspaces', ''), ...names.map((name) => new Option(name, name)))
+    workspaceFilter.value = current
   }
+  refreshBoard()
+}
+
+const collapsePane = (): void => {
+  const id = clearExpansion()
+  refreshBoard()
+  if (id === null) return
+  requestAnimationFrame(() => {
+    entries.get(id)?.tile.root.scrollIntoView({ block: 'nearest' })
+    entries.get(id)?.tile.root.querySelector<HTMLButtonElement>('.title')?.focus({ preventScroll: true })
+  })
+}
+
+const expandPane = (paneId: number): void => {
+  if (expandedPaneId === paneId) { collapsePane(); return }
+  clearExpansion()
+  const order = visibleEntries().map((entry) => entry.snapshot.paneId)
+  const index = order.indexOf(paneId)
+  if (index < 0) return
+  order.splice(index, 1)
+  order.splice(Math.floor(index / columnCount) * columnCount, 0, paneId)
+  expandedPaneId = paneId
+  expandedOrder = order
+  entries.get(paneId)?.tile.setExpanded(true)
+  refreshBoard()
+  requestAnimationFrame(() => entries.get(paneId)?.tile.root.scrollIntoView({ block: 'nearest' }))
+}
+
+const nextWaiting = (): void => {
+  const waiting = visibleEntries().filter((entry) => entry.snapshot.status === 'waiting')
+  const index = waiting.findIndex((entry) => entry.snapshot.paneId === expandedPaneId)
+  const next = waiting[(index + 1) % waiting.length]?.snapshot.paneId
+  if (next !== undefined && next !== expandedPaneId) expandPane(next)
 }
 
 const upsert = (snapshot: PaneSnapshot): void => {
@@ -223,28 +253,20 @@ const upsert = (snapshot: PaneSnapshot): void => {
     // (setTimeout-driven) write buffer; lastScreen keeps the latest so the
     // visibilitychange handler can repaint once when the tab returns.
     existing.tile.update({ ...existing.snapshot, screen: document.hidden ? undefined : existing.lastScreen })
-    // A status or workspace change relocates the tile to its new (status, workspace)
-    // section and prunes the one it left. (Re-parenting was missing entirely before.)
-    if (existing.status !== snapshot.status || existing.workspace !== snapshot.workspace) {
-      const { status, workspace } = existing
-      existing.status = snapshot.status
-      existing.workspace = snapshot.workspace
-      workspaceSectionFor(snapshot.status, snapshot.workspace).querySelector('.tiles')?.appendChild(existing.tile.root)
-      prune(status, workspace)
-    }
     return
   }
-  const tile = createTile(snapshot, { onZoom: openZoom, onFocus: focusPane, onSend: sendToPane, onClose: closePane })
+  const tile = createTile(snapshot, {
+    onExpand: expandPane, onCollapse: collapsePane, onNextWaiting: nextWaiting,
+    onZoom: openZoom, onFocus: focusPane, onSend: sendToPane, onClose: closePane,
+  })
   tile.setPending(pendingFocus?.paneId === snapshot.paneId)
   entries.set(snapshot.paneId, {
     tile,
     snapshot: { ...snapshot, screen: undefined },
     lastScreen: snapshot.screen,
     inViewport: false,
-    status: snapshot.status,
-    workspace: snapshot.workspace,
   })
-  workspaceSectionFor(snapshot.status, snapshot.workspace).querySelector('.tiles')?.appendChild(tile.root)
+  board.appendChild(tile.root)
   viewport.observe(tile.root) // mounts lazily once it enters the viewport
 }
 
@@ -255,9 +277,8 @@ const remove = (paneId: number): void => {
   viewport.unobserve(entry.tile.root)
   entry.tile.dispose()
   entry.tile.root.remove()
-  const { status, workspace } = entry
+  if (expandedPaneId === paneId) clearExpansion()
   entries.delete(paneId)
-  prune(status, workspace)
 }
 
 /**
@@ -272,13 +293,14 @@ let scrollFollowArmed = false
 const followActive = (event: StreamEvent): void => {
   const active = event.panes.find((p) => p.active)
   if (!active || active.paneId === activePaneId) return
-  if (scrollFollowArmed && !document.hidden) {
+  if (scrollFollowArmed && !document.hidden && expandedPaneId === null) {
     entries.get(active.paneId)?.tile.root.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
   activePaneId = active.paneId
 }
 
 const handleEvent = (event: StreamEvent): void => {
+  receivedSnapshot = true
   event.panes.forEach(upsert)
   event.panes
     .filter((p) => p.paneId === zoom.openPaneId())
@@ -307,33 +329,75 @@ document.addEventListener('visibilitychange', () => {
   refreshSummary()
 })
 
-const shellToggle = document.querySelector('#show-shells') as HTMLInputElement
+const applyFilters = (): void => refreshSummary()
+search.addEventListener('input', applyFilters)
+workspaceFilter.addEventListener('change', applyFilters)
 shellToggle.addEventListener('change', () => {
-  document.body.classList.toggle('show-shells', shellToggle.checked)
+  if (!shellToggle.checked && selectedStatus === 'shell') selectedStatus = 'all'
+  applyFilters()
 })
+summary.addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-status]')
+  if (!button) return
+  selectedStatus = button.dataset.status as SessionStatus | 'all'
+  applyFilters()
+})
+document.querySelector('#clear-filters')!.addEventListener('click', () => {
+  search.value = ''
+  workspaceFilter.value = ''
+  selectedStatus = 'all'
+  applyFilters()
+  search.focus()
+})
+// Capture Escape before xterm consumes it when its read-only screen has focus.
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || (zoom.openPaneId() === null && expandedPaneId === null)) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (zoom.openPaneId() !== null) zoom.close()
+  else collapsePane()
+}, true)
 
-// Column count is a per-machine preference: the column-stretch grid divides the
-// width evenly, and tiles re-scale to the new card width. Stored in localStorage
-// so each browser/screen keeps its own choice.
 const refitAll = (): void => entries.forEach((entry) => entry.tile.refit())
-
 const colsSelect = document.querySelector('#cols-select') as HTMLSelectElement
-const applyCols = (value: string): void => board.style.setProperty('--cols', value)
-colsSelect.value = localStorage.getItem('cols') ?? '3'
-applyCols(colsSelect.value)
-colsSelect.addEventListener('change', () => {
-  localStorage.setItem('cols', colsSelect.value)
-  applyCols(colsSelect.value)
+const chrome = document.querySelector('#chrome') as HTMLElement
+const applyLayout = (): void => {
+  const availableCols = Math.max(1, Math.min(5, Math.floor((board.clientWidth - 10) / 266)))
+  const nextCols = colsSelect.value === 'auto' ? availableCols : Math.min(Number(colsSelect.value), availableCols)
+  const chromeHeight = chrome.offsetHeight
+  const rowHeight = Math.max(160, Math.min(240, Math.floor((window.innerHeight - chromeHeight - 34) / 4)))
+  board.style.setProperty('--cols', String(nextCols))
+  board.style.setProperty('--row-height', `${rowHeight}px`)
+  board.style.setProperty('--expanded-cols', String(Math.min(2, nextCols)))
+  document.documentElement.style.setProperty('--chrome-height', `${chromeHeight}px`)
+  if (nextCols !== columnCount && expandedOrder && expandedPaneId !== null) {
+    const index = expandedOrder.indexOf(expandedPaneId)
+    expandedOrder.splice(index, 1)
+    expandedOrder.splice(Math.floor(index / nextCols) * nextCols, 0, expandedPaneId)
+  }
+  columnCount = nextCols
+  refreshBoard()
   refitAll()
+}
+try {
+  const saved = localStorage.getItem('cols')
+  colsSelect.value = saved && ['auto', '2', '3', '4', '5'].includes(saved) ? saved : 'auto'
+} catch (error) {
+  console.warn('Could not load column preference:', error)
+  colsSelect.value = 'auto'
+}
+colsSelect.addEventListener('change', () => {
+  try { localStorage.setItem('cols', colsSelect.value) }
+  catch (error) { console.warn('Could not save column preference:', error) }
+  applyLayout()
 })
-
-// Card width also changes when the window resizes (or enters/exits fullscreen);
-// debounce a re-fit so content stays crisp without thrashing during a drag.
 let resizeHandle = 0
-window.addEventListener('resize', () => {
+const queueLayout = (): void => {
   clearTimeout(resizeHandle)
-  resizeHandle = window.setTimeout(refitAll, 150)
-})
+  resizeHandle = window.setTimeout(applyLayout, 150)
+}
+window.addEventListener('resize', queueLayout)
+new ResizeObserver(queueLayout).observe(chrome)
 
 const fullscreenToggle = document.querySelector('#fullscreen-toggle') as HTMLButtonElement
 fullscreenToggle.addEventListener('click', () => {
@@ -344,8 +408,8 @@ fullscreenToggle.addEventListener('click', () => {
 })
 document.addEventListener('fullscreenchange', () => {
   const on = document.fullscreenElement !== null
-  fullscreenToggle.textContent = on ? '⤢' : '⛶'
-  fullscreenToggle.title = on ? '退出全屏' : '全屏'
+  fullscreenToggle.textContent = on ? 'Exit full screen' : 'Full screen'
+  fullscreenToggle.title = fullscreenToggle.textContent
 })
 
 /**
@@ -363,7 +427,8 @@ let lastMessageAt = Date.now()
 
 const setStatus = (live: boolean): void => {
   document.body.classList.toggle('disconnected', !live)
-  conn.title = live ? 'live' : 'reconnecting…'
+  conn.textContent = live ? 'Live' : 'Reconnecting…'
+  conn.title = live ? 'Live' : 'Reconnecting — displayed screens may be stale'
 }
 
 const markLive = (): void => {
@@ -391,4 +456,6 @@ setInterval(() => {
   }
 }, 5000)
 
+refreshSummary()
+applyLayout()
 connect()

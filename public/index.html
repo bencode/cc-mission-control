@@ -8,22 +8,35 @@
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
-    <header id="topbar">
-      <h1>CC Mission Control</h1>
-      <span id="conn" title="live"></span>
-      <span id="summary"></span>
-      <label id="shell-filter"><input type="checkbox" id="show-shells" /> show shells</label>
-      <label id="cols-filter">columns
-        <select id="cols-select">
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5</option>
-        </select>
-      </label>
-      <button id="fullscreen-toggle" type="button" title="全屏">⛶</button>
-    </header>
-    <main id="board"></main>
+    <div id="chrome">
+      <header id="topbar">
+        <h1>CC Mission Control</h1>
+        <nav id="summary" aria-label="Filter by session status"></nav>
+        <span id="conn" role="status" title="Live">Live</span>
+        <button id="fullscreen-toggle" type="button" title="Full screen">Full screen</button>
+      </header>
+      <div id="toolbar" role="search" aria-label="Filter sessions">
+        <input id="session-search" type="search" aria-label="Search sessions" placeholder="Search sessions…" autocomplete="off" />
+        <select id="workspace-select" aria-label="Workspace"><option value="">All workspaces</option></select>
+        <label id="shell-filter"><input type="checkbox" id="show-shells" /> Show shells</label>
+        <label id="cols-filter">Columns
+          <select id="cols-select">
+            <option value="auto">Auto</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </label>
+        <span id="visible-count" aria-live="polite"></span>
+      </div>
+    </div>
+    <main id="board" aria-label="Live terminal wall"></main>
+    <div id="empty-state" hidden>
+      <h2>No sessions to show</h2>
+      <p id="empty-message">Start a session in WezTerm to see it here.</p>
+      <button id="clear-filters" type="button" hidden>Clear filters</button>
+    </div>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
