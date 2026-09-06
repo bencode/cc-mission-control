@@ -3,16 +3,10 @@ import { Terminal } from '@xterm/xterm'
 
 import type { PaneSnapshot } from '../types.ts'
 import { createScreenWriter } from './screen-writer.ts'
-import { createActionButtons, createCloseButton, displayTitle, el, type CloseHandler, type SendHandler } from './ui.ts'
+import { actionButton, AGENT_LABEL, createActionButtons, createCloseButton, displayTitle, el, STATUS_LABEL, type CloseHandler, type SendHandler } from './ui.ts'
 
 const FONT_SIZE = 14
-const VIEWPORT_MARGIN = 56
-const HEADER_HEIGHT = 44
-
-const TERMINAL_THEME = {
-  background: '#0d1117',
-  foreground: '#c9d1d9',
-}
+const TERMINAL_THEME = { background: '#0d1117', foreground: '#c9d1d9' }
 
 export type ZoomHandlers = {
   onFocus: (paneId: number) => void
@@ -27,112 +21,110 @@ export type Zoom = {
   openPaneId: () => number | null
 }
 
-/** Scale the full-size terminal down just enough to fit the viewport. */
-const fitToViewport = (terminal: Terminal, screen: HTMLElement, body: HTMLElement): void => {
-  requestAnimationFrame(() => {
-    const rendered = terminal.element?.querySelector<HTMLElement>('.xterm-screen')
-    if (!rendered) return
-    // getBoundingClientRect: the canvas renderer sizes glyphs onto an inner
-    // canvas, so .xterm-screen's offsetWidth is unreliable; its rect is not.
-    const rect = rendered.getBoundingClientRect()
-    if (rect.width === 0) return
-    const maxWidth = window.innerWidth - VIEWPORT_MARGIN * 2
-    const maxHeight = window.innerHeight - VIEWPORT_MARGIN * 2 - HEADER_HEIGHT
-    const scale = Math.min(maxWidth / rect.width, maxHeight / rect.height, 1)
-    screen.style.transform = `scale(${scale})`
-    body.style.width = `${Math.round(rect.width * scale)}px`
-    body.style.height = `${Math.round(rect.height * scale)}px`
-  })
-}
-
 export const createZoom = (handlers: ZoomHandlers): Zoom => {
-  const backdrop = el('div', 'zoom-backdrop hidden')
+  const backdrop = document.createElement('dialog')
+  backdrop.className = 'zoom-backdrop'
+  backdrop.setAttribute('aria-labelledby', 'zoom-title')
   const panel = el('article', 'zoom-panel')
   const header = el('header', 'tile-header')
+  const heading = el('div', 'zoom-heading')
   const light = el('span', 'light')
-  const title = el('span', 'title')
-  const statusLabel = el('span', 'status-label')
+  light.setAttribute('aria-hidden', 'true')
+  const title = el('h2', 'title')
+  title.id = 'zoom-title'
+  title.style.margin = '0'
+  const status = el('span', 'status-label')
+  heading.append(light, title, status)
+  const meta = el('div', 'zoom-meta')
+  const controls = el('div', 'zoom-controls')
+  header.append(heading, meta, controls)
   const body = el('div', 'zoom-body')
+  body.tabIndex = 0
+  body.setAttribute('aria-label', 'Read-only terminal screen')
+  const stage = el('div', 'screen-stage')
   const screen = el('div', 'screen')
-
-  body.appendChild(screen)
-  panel.append(header, body)
-  backdrop.appendChild(panel)
-  document.body.appendChild(backdrop)
+  stage.append(screen)
+  body.append(stage)
+  const footer = el('footer', 'tile-footer')
+  panel.append(header, body, footer)
+  backdrop.append(panel)
+  document.body.append(backdrop)
 
   let terminal: Terminal | null = null
   let paneId: number | null = null
   const writer = createScreenWriter(() => terminal)
+  let frame = 0
+  let following = true
 
-  const close = (): void => {
-    backdrop.classList.add('hidden')
-    document.removeEventListener('keydown', onKeydown, true)
-    terminal?.dispose()
-    terminal = null
-    writer.reset() // the disposed terminal's write callback will never fire
-    paneId = null
+  const refit = (): void => {
+    cancelAnimationFrame(frame)
+    frame = requestAnimationFrame(() => {
+      const rendered = terminal?.element?.querySelector<HTMLElement>('.xterm-screen')
+      if (!rendered || !backdrop.open) return
+      stage.style.width = `${rendered.offsetWidth}px`
+      stage.style.height = `${rendered.offsetHeight}px`
+      if (following) body.scrollTop = body.scrollHeight
+    })
   }
-
-  // Capture phase: xterm's helper textarea steals focus and swallows
-  // bubbling key events, so Escape must be intercepted before it.
-  const onKeydown = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape') close()
-  }
-
-  backdrop.addEventListener('click', (event) => {
-    if (event.target === backdrop) close()
+  new ResizeObserver(refit).observe(body)
+  body.addEventListener('scroll', () => {
+    following = body.scrollHeight - body.clientHeight - body.scrollTop < 12
   })
 
-  /** Always-visible controls; `.actions` (Approve/Esc) shows only for waiting panes. */
-  const buildHeader = (snapshot: PaneSnapshot): void => {
-    const actions = createActionButtons(snapshot.paneId, handlers.onSend)
-    const controls = el('span', 'zoom-controls')
-    const focusButton = el('button', 'action focus')
-    focusButton.textContent = '⧉ Open in WezTerm'
-    focusButton.addEventListener('click', () => handlers.onFocus(snapshot.paneId))
-    const killButton = createCloseButton(snapshot.paneId, handlers.onClose, '✕ Kill')
-    const closeButton = el('button', 'action close')
-    closeButton.textContent = '✕'
-    closeButton.addEventListener('click', close)
-    controls.append(focusButton, killButton, closeButton)
-    header.replaceChildren(light, title, statusLabel, actions, controls)
+  const close = (): void => {
+    if (!backdrop.open) return
+    cancelAnimationFrame(frame)
+    backdrop.close()
+    paneId = null
+    controls.replaceChildren()
+    footer.replaceChildren()
   }
+  backdrop.addEventListener('cancel', (event) => { event.preventDefault(); close() })
+  backdrop.addEventListener('click', (event) => { if (event.target === backdrop) close() })
 
   const applyState = (snapshot: PaneSnapshot): void => {
-    panel.className = `zoom-panel status-${snapshot.status} agent-${snapshot.agent}`
-    title.textContent = `${snapshot.workspace} · ${displayTitle(snapshot.title)}`
-    statusLabel.textContent = snapshot.agent === 'shell' ? snapshot.status : `${snapshot.agent} ${snapshot.status}`
-  }
-
-  const open = (snapshot: PaneSnapshot, lastScreen: string | undefined): void => {
-    if (terminal) close()
-    paneId = snapshot.paneId
-    terminal = new Terminal({
-      cols: snapshot.cols,
-      rows: snapshot.rows,
-      fontSize: FONT_SIZE,
-      scrollback: 0,
-      disableStdin: true,
-      cursorBlink: false,
-      theme: TERMINAL_THEME,
-    })
-    screen.replaceChildren()
-    screen.style.transform = ''
-    terminal.open(screen)
-    terminal.loadAddon(new CanvasAddon()) // after open(), before first write()
-    if (lastScreen !== undefined) writer.write(lastScreen)
-    buildHeader(snapshot)
-    applyState(snapshot)
-    fitToViewport(terminal, screen, body)
-    backdrop.classList.remove('hidden')
-    terminal.blur()
-    document.addEventListener('keydown', onKeydown, true)
+    panel.className = `zoom-panel status-${snapshot.status}`
+    title.textContent = displayTitle(snapshot.title) || `Session ${snapshot.paneId}`
+    status.textContent = STATUS_LABEL[snapshot.status]
+    meta.textContent = `${snapshot.workspace} · ${AGENT_LABEL[snapshot.agent]} · ${snapshot.cwd}${snapshot.active ? ' · Active in WezTerm' : ''}`
   }
 
   const update = (snapshot: PaneSnapshot): void => {
-    if (terminal === null || snapshot.paneId !== paneId) return
+    if (!terminal || snapshot.paneId !== paneId) return
     applyState(snapshot)
+    if (terminal.cols !== snapshot.cols || terminal.rows !== snapshot.rows) terminal.resize(snapshot.cols, snapshot.rows)
     if (snapshot.screen !== undefined) writer.write(snapshot.screen)
+    refit()
+  }
+
+  const open = (snapshot: PaneSnapshot, lastScreen: string | undefined): void => {
+    if (backdrop.open) close()
+    paneId = snapshot.paneId
+    applyState(snapshot)
+    controls.append(
+      actionButton('Back', close),
+      actionButton('Open in WezTerm', () => handlers.onFocus(snapshot.paneId), 'focus'),
+      createCloseButton(snapshot.paneId, handlers.onClose),
+    )
+    footer.append(createActionButtons(snapshot.paneId, handlers.onSend))
+    backdrop.showModal()
+    // Retain this read-only renderer across opens; xterm viewport callbacks can outlive disposal.
+    if (!terminal) {
+      terminal = new Terminal({
+        cols: snapshot.cols, rows: snapshot.rows, fontSize: FONT_SIZE, scrollback: 0,
+        disableStdin: true, cursorBlink: false, theme: TERMINAL_THEME,
+      })
+      terminal.attachCustomWheelEventHandler(() => false)
+      terminal.open(screen)
+      if (terminal.textarea) terminal.textarea.tabIndex = -1
+      terminal.loadAddon(new CanvasAddon())
+      terminal.onRender(refit)
+    }
+    body.scrollLeft = 0
+    body.scrollTop = body.scrollHeight
+    following = true
+    update({ ...snapshot, screen: lastScreen ?? '' })
+    controls.querySelector<HTMLButtonElement>('button')?.focus()
   }
 
   return { open, update, close, openPaneId: () => paneId }

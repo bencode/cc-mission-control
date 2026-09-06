@@ -1,168 +1,180 @@
 import { CanvasAddon } from '@xterm/addon-canvas'
 import { Terminal } from '@xterm/xterm'
 
-import type { AgentKind, PaneSnapshot, SessionStatus } from '../types.ts'
+import type { PaneSnapshot } from '../types.ts'
 import { createScreenWriter } from './screen-writer.ts'
-import { createActionButtons, createCloseButton, displayTitle, el, type CloseHandler, type SendHandler } from './ui.ts'
+import { actionButton, AGENT_LABEL, createActionButtons, createCloseButton, displayTitle, el, STATUS_LABEL, type CloseHandler, type SendHandler } from './ui.ts'
 
-// Tiles are scaled down to their card width anyway, so render at a small font:
-// the canvas backing store scales with fontSize, making mounts and compositing
-// cheaper. The zoom view renders its own terminal at a readable size.
 const TILE_FONT_SIZE = 9
-
-const TERMINAL_THEME = {
-  background: '#0d1117',
-  foreground: '#c9d1d9',
-}
+const READ_FONT_SIZE = 14
+const TERMINAL_THEME = { background: '#0d1117', foreground: '#c9d1d9' }
 
 export type Tile = {
   root: HTMLElement
-  /** Update the header (always) and the screen (only while mounted). */
   update: (snapshot: PaneSnapshot) => void
-  /** Show a focus request in flight without changing the SSE-owned active state. */
   setPending: (pending: boolean) => void
-  /** Create the xterm terminal and render the current screen. */
+  setExpanded: (expanded: boolean) => void
+  setNextWaiting: (enabled: boolean) => void
   mount: (snapshot: PaneSnapshot) => void
-  /** Dispose the terminal to free its canvas compositor layers. */
   unmount: () => void
-  /** Re-scale to the current card width (after a column-count or window resize). */
   refit: () => void
   isMounted: () => boolean
   dispose: () => void
 }
 
 export type TileHandlers = {
+  onExpand: (paneId: number) => void
+  onCollapse: () => void
+  onNextWaiting: () => void
   onZoom: (paneId: number) => void
   onFocus: (paneId: number) => void
   onSend: SendHandler
   onClose: CloseHandler
 }
 
-/**
- * Scale the rendered terminal down so its full width fits the tile.
- * Measures the inner `.xterm-screen` element: it carries the true pixel size
- * (cols × cell width), while the outer element is clamped by the container.
- * The target width is the card's own width (`wrap.clientWidth`), so tiles
- * re-fit to whatever the grid hands them as the column count or window changes.
- */
-const fitToTile = (terminal: Terminal, screen: HTMLElement, wrap: HTMLElement): void => {
-  // Clear any prior transform so the measured rect is the unscaled render size.
-  screen.style.transform = ''
-  requestAnimationFrame(() => {
-    const rendered = terminal.element?.querySelector<HTMLElement>('.xterm-screen')
-    if (!rendered) return
-    // getBoundingClientRect: the canvas renderer no longer sizes .xterm-screen
-    // via offsetWidth, but its layout box still reflects cols × cellWidth.
-    const rect = rendered.getBoundingClientRect()
-    const target = wrap.clientWidth
-    if (rect.width === 0 || target === 0) return
-    const scale = target / rect.width
-    screen.style.transform = `scale(${scale})`
-    wrap.style.height = `${Math.round(rect.height * scale)}px`
-  })
-}
-
 export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile => {
   const root = el('article', 'tile')
   root.dataset.paneId = String(snapshot.paneId)
-  root.title = '点击切到终端'
-  root.addEventListener('click', () => handlers.onFocus(snapshot.paneId))
-
   const header = el('header', 'tile-header')
+  const heading = el('div', 'tile-heading')
   const light = el('span', 'light')
-  const title = el('span', 'title')
-  title.title = '点击放大'
-  title.addEventListener('click', (event) => {
-    event.stopPropagation()
-    handlers.onZoom(snapshot.paneId)
-  })
+  light.setAttribute('aria-hidden', 'true')
+  const title = actionButton('', () => handlers.onExpand(snapshot.paneId), 'title')
   const status = el('span', 'status-label')
-  const actions = createActionButtons(snapshot.paneId, handlers.onSend)
-  const closeButton = createCloseButton(snapshot.paneId, handlers.onClose)
-  header.append(light, title, status, actions, closeButton)
-
+  heading.append(light, title, status)
+  const meta = el('div', 'tile-meta')
+  const workspace = el('span', 'workspace-label')
+  const active = el('span', 'active-label')
+  active.textContent = 'Active in WezTerm'
+  meta.append(workspace, active)
+  const tools = el('div', 'expanded-tools')
+  header.append(heading, meta, tools)
   const wrap = el('div', 'screen-wrap')
+  wrap.id = `screen-${snapshot.paneId}`
+  title.setAttribute('aria-controls', wrap.id)
+  const stage = el('div', 'screen-stage')
   const screen = el('div', 'screen')
-  wrap.appendChild(screen)
-  root.append(header, wrap)
+  stage.append(screen)
+  const placeholder = el('span', 'screen-placeholder')
+  placeholder.textContent = 'Loading terminal…'
+  wrap.append(stage, placeholder)
+  const footer = el('footer', 'tile-footer')
+  const next = actionButton('Next waiting →', handlers.onNextWaiting, 'next-waiting')
+  root.append(header, wrap, footer)
 
-  // Terminal is created lazily on mount; placeholders carry only the header.
+  let expanded = false
   let terminal: Terminal | null = null
   const writer = createScreenWriter(() => terminal)
   let size = { cols: snapshot.cols, rows: snapshot.rows }
-  let currentAgent: AgentKind | undefined
-  let currentStatus: SessionStatus | undefined
-  let currentActive: boolean | undefined
-  let currentPending = false
+  let frame = 0
+  let following = true
 
-  const renderClassName = (): void => {
-    const agent = currentAgent ?? snapshot.agent
-    const status = currentStatus ?? snapshot.status
-    root.className = `tile status-${status} agent-${agent}${currentActive ? ' active' : ''}${currentPending ? ' pending-focus' : ''}`
+  const refit = (): void => {
+    cancelAnimationFrame(frame)
+    frame = requestAnimationFrame(() => {
+      const rendered = terminal?.element?.querySelector<HTMLElement>('.xterm-screen')
+      if (!rendered || !wrap.clientWidth || !wrap.clientHeight) return
+      const width = rendered.offsetWidth
+      const height = rendered.offsetHeight
+      if (!width || !height) return
+      const scale = expanded ? 1 : Math.min(wrap.clientWidth / width, wrap.clientHeight / height, 1)
+      screen.style.transform = `scale(${scale})`
+      stage.style.width = `${Math.ceil(width * scale)}px`
+      stage.style.height = `${Math.ceil(height * scale)}px`
+      if (expanded && following) wrap.scrollTop = wrap.scrollHeight
+    })
+  }
+  const resize = new ResizeObserver(refit)
+  resize.observe(wrap)
+  wrap.addEventListener('scroll', () => {
+    if (expanded) following = wrap.scrollHeight - wrap.clientHeight - wrap.scrollTop < 12
+  })
+  root.addEventListener('click', () => { if (!expanded) handlers.onExpand(snapshot.paneId) })
+
+  const setExpanded = (value: boolean): void => {
+    if (value === expanded) return
+    expanded = value
+    root.classList.toggle('expanded', value)
+    title.setAttribute('aria-expanded', String(value))
+    title.title = value ? 'Collapse session' : 'Expand session'
+    wrap.tabIndex = value ? 0 : -1
+    wrap.setAttribute('aria-label', 'Read-only terminal screen')
+    tools.replaceChildren()
+    footer.replaceChildren()
+    if (value) {
+      tools.append(
+        actionButton('Open in WezTerm', () => handlers.onFocus(snapshot.paneId), 'focus'),
+        actionButton('Maximize', () => handlers.onZoom(snapshot.paneId), 'maximize'),
+        actionButton('Collapse', handlers.onCollapse),
+        createCloseButton(snapshot.paneId, handlers.onClose),
+      )
+      footer.append(createActionButtons(snapshot.paneId, handlers.onSend), next)
+    }
+    if (terminal) terminal.options.fontSize = value ? READ_FONT_SIZE : TILE_FONT_SIZE
+    wrap.scrollLeft = 0
+    wrap.scrollTop = wrap.scrollHeight
+    following = true
+    refit()
   }
 
   const renderHeader = (next: PaneSnapshot): void => {
-    const active = next.active ?? false
-    if (next.agent !== currentAgent || next.status !== currentStatus || active !== currentActive) {
-      currentAgent = next.agent
-      currentStatus = next.status
-      currentActive = active
-      renderClassName()
-      status.textContent = next.agent === 'shell' ? next.status : `${next.agent} ${next.status}`
-    }
-    title.textContent = displayTitle(next.title)
-  }
-
-  const setPending = (pending: boolean): void => {
-    if (pending === currentPending) return
-    currentPending = pending
-    renderClassName()
+    root.classList.remove('status-working', 'status-waiting', 'status-idle', 'status-shell')
+    root.classList.add(`status-${next.status}`)
+    title.textContent = displayTitle(next.title) || `Session ${next.paneId}`
+    status.textContent = STATUS_LABEL[next.status]
+    workspace.textContent = `${next.workspace} · ${AGENT_LABEL[next.agent]}`
+    workspace.title = next.cwd
+    active.hidden = !next.active
+    root.classList.toggle('active', Boolean(next.active))
   }
 
   const mount = (next: PaneSnapshot): void => {
     if (terminal) return
     size = { cols: next.cols, rows: next.rows }
     terminal = new Terminal({
-      cols: next.cols,
-      rows: next.rows,
-      fontSize: TILE_FONT_SIZE,
-      scrollback: 0,
-      disableStdin: true,
-      cursorBlink: false,
-      theme: TERMINAL_THEME,
+      cols: next.cols, rows: next.rows, fontSize: expanded ? READ_FONT_SIZE : TILE_FONT_SIZE,
+      scrollback: 0, disableStdin: true, cursorBlink: false, theme: TERMINAL_THEME,
     })
-    // Read-only tiles leave wheel gestures to the page instead of xterm.
     terminal.attachCustomWheelEventHandler(() => false)
     terminal.open(screen)
-    terminal.loadAddon(new CanvasAddon()) // after open(), before first write()
+    if (terminal.textarea) terminal.textarea.tabIndex = -1
+    terminal.loadAddon(new CanvasAddon())
+    terminal.onRender(refit)
+    placeholder.hidden = true
     if (next.screen !== undefined) writer.write(next.screen)
-    fitToTile(terminal, screen, wrap)
+    refit()
   }
 
   const unmount = (): void => {
+    cancelAnimationFrame(frame)
     if (!terminal) return
-    terminal.dispose() // frees the canvas layers; wrap keeps its height, no reflow
+    terminal.dispose()
     terminal = null
-    writer.reset() // the disposed terminal's write callback will never fire
+    writer.reset()
     screen.replaceChildren()
     screen.style.transform = ''
+    placeholder.hidden = false
   }
 
   const update = (next: PaneSnapshot): void => {
-    renderHeader(next) // header stays live even while unmounted
+    renderHeader(next)
     if (!terminal) return
     if (next.cols !== size.cols || next.rows !== size.rows) {
       size = { cols: next.cols, rows: next.rows }
       terminal.resize(next.cols, next.rows)
-      fitToTile(terminal, screen, wrap)
+      refit()
     }
     if (next.screen !== undefined) writer.write(next.screen)
   }
 
-  const refit = (): void => {
-    if (terminal) fitToTile(terminal, screen, wrap)
-  }
-
+  title.setAttribute('aria-expanded', 'false')
+  title.title = 'Expand session'
   renderHeader(snapshot)
-  return { root, update, setPending, mount, unmount, refit, isMounted: () => terminal !== null, dispose: () => terminal?.dispose() }
+  return {
+    root, update, setExpanded,
+    setPending: (pending) => root.classList.toggle('pending-focus', pending),
+    setNextWaiting: (enabled) => { next.disabled = !enabled },
+    mount, unmount, refit, isMounted: () => terminal !== null,
+    dispose: () => { resize.disconnect(); unmount() },
+  }
 }
