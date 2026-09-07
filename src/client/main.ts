@@ -217,7 +217,7 @@ const collapsePane = (): void => {
   if (id === null) return
   requestAnimationFrame(() => {
     entries.get(id)?.tile.root.scrollIntoView({ block: 'nearest' })
-    entries.get(id)?.tile.root.querySelector<HTMLButtonElement>('.title')?.focus({ preventScroll: true })
+    entries.get(id)?.tile.root.querySelector<HTMLButtonElement>('.expand')?.focus({ preventScroll: true })
   })
 }
 

@@ -8,13 +8,14 @@ Monitor Claude Code and Codex sessions in one dense, live terminal wall. The UI 
 
 ![CC Mission Control live terminal wall with an expanded session](docs/screenshot.png)
 
-The live terminal wall keeps other agents visible while one session expands in place for reading. Search, workspace and status filters help you find the next session to inspect.
+Click a normal card to open its session in WezTerm, or use Expand to read it in the dashboard while other agents remain visible. Search, workspace and status filters help you find the next session to inspect.
 
 ## Features
 
 - **Continuous terminal wall** — sessions fill one grid, ordered by waiting, working, idle, then shell; workspace labels stay inside the cards. Auto columns adapt to the window, up to five columns. On a 1536×1024 desktop, the compact layout fits 20 normal cards.
 - **Search and filters** — combine title/workspace/directory search, a workspace selector, and status filters. Shell sessions are hidden by default. Filters change only the displayed cards.
-- **Expand in place** — click a card to move it to the start of its row and expand it across two columns and two rows. Other terminals keep updating. Status changes do not reorder cards during reading; collapse restores the normal order. On a single-column screen, expansion uses one column.
+- **One-click focus** — click a normal card’s title or terminal preview to switch directly to its WezTerm session through the Lua bridge.
+- **Expand in place** — click the separate Expand button on a card to move it to the start of its row and expand it across two columns and two rows. Other terminals keep updating. Status changes do not reorder cards during reading; collapse restores the normal order. On a single-column screen, expansion uses one column.
 - **Readable output** — small previews fit the entire terminal screen. Expanded cards use 14px text and native scrolling, following the bottom until you scroll away. Maximize opens a larger reading view; Back or Escape returns to the expanded card.
 - **Explicit actions** — Open in WezTerm uses the existing focus bridge. Approve (send 1) and Send Esc send the same keys as before. Close session still requires two clicks within three seconds. Action controls appear in the expanded and maximized views.
 - **Next waiting** — cycles through waiting sessions in the current filters. The currently expanded session remains open when its status changes; new waiting sessions do not take over the reading view.
@@ -22,7 +23,7 @@ The live terminal wall keeps other agents visible while one session expands in p
 
 ### Keyboard and display controls
 
-Tab to a card title and press Enter or Space to expand/collapse it. Escape closes the maximized view first, then collapses the in-grid view; it does not send Escape to WezTerm. The column selector retains each browser's preference, with narrow windows limiting the actual number of columns. Full screen uses the browser's fullscreen mode.
+Tab to a card title and press Enter or Space to open its session in WezTerm. The separate Expand button opens the in-grid reading view and changes to Collapse while expanded. Clicking, scrolling, or selecting text inside an expanded terminal keeps you in the dashboard. Escape closes the maximized view first, then collapses the in-grid view; it does not send Escape to WezTerm. The column selector retains each browser's preference, with narrow windows limiting the actual number of columns. Full screen uses the browser's fullscreen mode.
 
 The terminal capture, agent/status detection, SSE and reconnection, viewport-based mounting, screen writer, and focus/send/close endpoints are unchanged. The UI does not add terminal input, history, task inference, automatic approval, or retries.
 
