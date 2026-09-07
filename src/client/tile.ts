@@ -39,9 +39,14 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
   const heading = el('div', 'tile-heading')
   const light = el('span', 'light')
   light.setAttribute('aria-hidden', 'true')
-  const title = actionButton('', () => handlers.onExpand(snapshot.paneId), 'title')
+  const title = actionButton('', () => handlers.onFocus(snapshot.paneId), 'title')
+  title.title = 'Open in WezTerm'
+  const expand = actionButton('Expand', () => {
+    if (expanded) handlers.onCollapse()
+    else handlers.onExpand(snapshot.paneId)
+  }, 'expand')
   const status = el('span', 'status-label')
-  heading.append(light, title, status)
+  heading.append(light, title, status, expand)
   const meta = el('div', 'tile-meta')
   const workspace = el('span', 'workspace-label')
   const active = el('span', 'active-label')
@@ -51,7 +56,7 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
   header.append(heading, meta, tools)
   const wrap = el('div', 'screen-wrap')
   wrap.id = `screen-${snapshot.paneId}`
-  title.setAttribute('aria-controls', wrap.id)
+  expand.setAttribute('aria-controls', wrap.id)
   const stage = el('div', 'screen-stage')
   const screen = el('div', 'screen')
   stage.append(screen)
@@ -89,14 +94,14 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
   wrap.addEventListener('scroll', () => {
     if (expanded) following = wrap.scrollHeight - wrap.clientHeight - wrap.scrollTop < 12
   })
-  root.addEventListener('click', () => { if (!expanded) handlers.onExpand(snapshot.paneId) })
+  root.addEventListener('click', () => { if (!expanded) handlers.onFocus(snapshot.paneId) })
 
   const setExpanded = (value: boolean): void => {
     if (value === expanded) return
     expanded = value
     root.classList.toggle('expanded', value)
-    title.setAttribute('aria-expanded', String(value))
-    title.title = value ? 'Collapse session' : 'Expand session'
+    expand.setAttribute('aria-expanded', String(value))
+    expand.textContent = value ? 'Collapse' : 'Expand'
     wrap.tabIndex = value ? 0 : -1
     wrap.setAttribute('aria-label', 'Read-only terminal screen')
     tools.replaceChildren()
@@ -105,7 +110,6 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
       tools.append(
         actionButton('Open in WezTerm', () => handlers.onFocus(snapshot.paneId), 'focus'),
         actionButton('Maximize', () => handlers.onZoom(snapshot.paneId), 'maximize'),
-        actionButton('Collapse', handlers.onCollapse),
         createCloseButton(snapshot.paneId, handlers.onClose),
       )
       footer.append(createActionButtons(snapshot.paneId, handlers.onSend), next)
@@ -167,8 +171,7 @@ export const createTile = (snapshot: PaneSnapshot, handlers: TileHandlers): Tile
     if (next.screen !== undefined) writer.write(next.screen)
   }
 
-  title.setAttribute('aria-expanded', 'false')
-  title.title = 'Expand session'
+  expand.setAttribute('aria-expanded', 'false')
   renderHeader(snapshot)
   return {
     root, update, setExpanded,
