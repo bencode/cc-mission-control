@@ -8,9 +8,11 @@ import { displayTitle } from '../src/client/ui.ts'
 const fixture = (name: string): string =>
   readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 
-test('working: braille spinner title wins regardless of screen content', () => {
+test('working: Claude spinner title wins regardless of screen content', () => {
   assert.equal(detectStatus('claude', '⠐ add-basic-validation-checks', fixture('working.txt')), 'working')
   assert.equal(detectStatus('claude', '⠂ another-task', ''), 'working')
+  assert.equal(detectStatus('claude', '◐ 沙箱技术深度调研', ''), 'working')
+  assert.equal(detectStatus('claude', '◑ typecheck 内存占用优化策略', ''), 'working')
 })
 
 test('idle: ✳ title with a plain prompt on screen', () => {
@@ -81,12 +83,15 @@ test('detectAgent prefers process signals but falls back to title heuristics', (
   assert.equal(detectAgent('[ . ] Action Required | yimi'), 'codex')
   assert.equal(detectAgent('[ ! ] Action Required'), 'codex')
   assert.equal(detectAgent('✳ Claude Code'), 'claude')
+  assert.equal(detectAgent('◐ Claude Code'), 'claude')
   assert.equal(detectAgent('cc-mission-control'), 'shell')
 })
 
 test('isClaudePane distinguishes Claude panes from shells', () => {
   assert.equal(isClaudePane('✳ Claude Code'), true)
   assert.equal(isClaudePane('⠂ fix-flaky-integration-test'), true)
+  assert.equal(isClaudePane('◐ 沙箱技术深度调研'), true)
+  assert.equal(isClaudePane('◑ typecheck 内存占用优化策略'), true)
   assert.equal(isClaudePane('~/work/example-project'), false)
 })
 

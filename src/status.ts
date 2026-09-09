@@ -2,7 +2,8 @@ import type { AgentKind, SessionStatus } from './types.ts'
 
 /**
  * Claude Code reflects its state in the pane title it sets:
- *   "⠐ task-name"  — a braille spinner frame while the agent is working
+ *   "⠐ task-name"  — a legacy braille spinner frame while the agent is working
+ *   "◐ task-name"  — a current two-frame spinner while the agent is working
  *   "✳ task-name"  — idle (waiting for the user or between turns)
  * Anything else is treated as a plain shell pane.
  */
@@ -52,8 +53,11 @@ const isBrailleSpinner = (char: string): boolean => {
   return code >= BRAILLE_START && code <= BRAILLE_END
 }
 
+const isClaudeWorkingTitle = (title: string): boolean =>
+  isBrailleSpinner(title.charAt(0)) || title.startsWith('◐') || title.startsWith('◑')
+
 export const isClaudePane = (title: string): boolean =>
-  title.startsWith(IDLE_MARKER) || isBrailleSpinner(title.charAt(0))
+  title.startsWith(IDLE_MARKER) || isClaudeWorkingTitle(title)
 
 export const isCodexActionRequiredTitle = (title: string): boolean =>
   CODEX_ACTION_REQUIRED.test(title)
@@ -79,7 +83,7 @@ export const detectStatus = (agent: AgentKind, title: string, screenText: string
     return isBrailleSpinner(title.charAt(0)) ? 'working' : 'idle'
   }
 
-  if (isBrailleSpinner(title.charAt(0))) return 'working'
+  if (isClaudeWorkingTitle(title)) return 'working'
   if (!title.startsWith(IDLE_MARKER)) return 'idle'
   return WAITING_CURSOR.test(tail(screenText)) ? 'waiting' : 'idle'
 }
