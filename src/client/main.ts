@@ -198,7 +198,7 @@ const refreshBoard = (): void => {
 const refreshSummary = (): void => {
   const counts = summarizeSessions([...entries.values()].map((entry) => entry.snapshot))
   updateSessionSummary(summary, counts, selectedStatus, shellToggle.checked)
-  const waiting = counts.waiting.codex + counts.waiting.claude
+  const waiting = counts.waiting.codex + counts.waiting.claude + counts.waiting.pi
   document.title = waiting > 0 ? `(${waiting} waiting) Mission Control` : 'Mission Control'
   const current = workspaceFilter.value
   const names = [...new Set([...entries.values()].map((entry) => entry.snapshot.workspace))].sort()
@@ -368,7 +368,7 @@ const applyLayout = (): void => {
   const rowHeight = Math.max(160, Math.min(240, Math.floor((window.innerHeight - chromeHeight - 34) / 4)))
   board.style.setProperty('--cols', String(nextCols))
   board.style.setProperty('--row-height', `${rowHeight}px`)
-  board.style.setProperty('--expanded-cols', String(Math.min(2, nextCols)))
+  board.style.setProperty('--expanded-cols', String(Math.min(3, nextCols)))
   document.documentElement.style.setProperty('--chrome-height', `${chromeHeight}px`)
   if (nextCols !== columnCount && expandedOrder && expandedPaneId !== null) {
     const index = expandedOrder.indexOf(expandedPaneId)

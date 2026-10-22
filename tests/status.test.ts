@@ -79,12 +79,28 @@ test('claude: process match with plain project title is idle', () => {
 })
 
 test('detectAgent prefers process signals but falls back to title heuristics', () => {
+  assert.equal(detectAgent('π - cc-mission-control', 'pi'), 'pi')
+  assert.equal(detectAgent('custom session title', 'pi'), 'pi')
+  assert.equal(detectAgent('✳ custom title', 'pi'), 'pi')
   assert.equal(detectAgent('cc-mission-control', 'codex'), 'codex')
   assert.equal(detectAgent('[ . ] Action Required | yimi'), 'codex')
   assert.equal(detectAgent('[ ! ] Action Required'), 'codex')
   assert.equal(detectAgent('✳ Claude Code'), 'claude')
   assert.equal(detectAgent('◐ Claude Code'), 'claude')
   assert.equal(detectAgent('cc-mission-control'), 'shell')
+})
+
+test('pi: default working loader is working, including the embedded editor border', () => {
+  assert.equal(detectStatus('pi', 'π - project', ' ⠹ Working (esc to interrupt)\n───\n\n───'), 'working')
+  assert.equal(detectStatus('pi', 'π - project', '─── ⠋ Working ───\n\n───'), 'working')
+  assert.equal(detectStatus('pi', 'π - project', ' ⠏ Working...\n───\n\n───'), 'working')
+})
+
+test('pi: idle does not inherit Claude signals or match old loader output', () => {
+  assert.equal(detectStatus('pi', 'π - project', '───\n\n───\n~/project'), 'idle')
+  assert.equal(detectStatus('pi', '◐ custom title', '❯ 1. Example'), 'idle')
+  assert.equal(detectStatus('pi', 'π - project', 'Working on the next task'), 'idle')
+  assert.equal(detectStatus('pi', 'π - project', `⠹ Working\n${'completed\n'.repeat(31)}`), 'idle')
 })
 
 test('isClaudePane distinguishes Claude panes from shells', () => {

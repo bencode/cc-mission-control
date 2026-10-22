@@ -1,4 +1,4 @@
-export type AgentKind = 'claude' | 'codex' | 'shell'
+export type AgentKind = 'claude' | 'codex' | 'pi' | 'shell'
 
 export type SessionStatus = 'working' | 'waiting' | 'idle' | 'shell'
 

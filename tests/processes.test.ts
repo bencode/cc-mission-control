@@ -42,7 +42,25 @@ test('parseAgentProcesses ignores command arguments that merely mention agents',
     '81215 81213 ttys004 rg codex',
     '81216 81213 ttys005 node /tmp/claude-helper.js',
     '81217 81213 ?? codex',
+    '81218 81213 ttys006 rg pi',
+    '81219 81213 ttys007 node /tmp/pi-helper.js',
+    '81220 81220 ?? pi',
   ].join('\n'))
 
   assert.equal(agents.size, 0)
+})
+
+test('parseAgentProcesses detects pi sessions, including launcher-owned groups', () => {
+  const agents = parseAgentProcesses([
+    '52054 52054 ttys035 pi',
+    '63766 63765 ttys036 pi',
+    '64000 64000 ttys037 /Users/me/.local/bin/pi',
+    '64001 64000 ttys037 codex',
+  ].join('\n'))
+
+  assert.deepEqual([...agents], [
+    ['ttys035', 'pi'],
+    ['ttys036', 'pi'],
+    ['ttys037', 'pi'],
+  ])
 })

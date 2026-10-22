@@ -1,8 +1,8 @@
 # CC Mission Control
 
-A mission-control dashboard for [Claude Code](https://claude.com/claude-code) and Codex sessions running in [WezTerm](https://wezterm.org).
+A mission-control dashboard for [Claude Code](https://claude.com/claude-code), Codex, and Pi sessions running in [WezTerm](https://wezterm.org).
 
-Monitor Claude Code and Codex sessions in one dense, live terminal wall. The UI keeps every visible session's full terminal preview, with an in-grid reading view for the agent you want to inspect.
+Monitor Claude Code, Codex, and Pi sessions in one dense, live terminal wall. The UI keeps every visible session's full terminal preview, with an in-grid reading view for the agent you want to inspect.
 
 ![Status](https://img.shields.io/badge/status-experimental-orange)
 
@@ -15,7 +15,7 @@ Click a normal card to open its session in WezTerm, or use Expand to read it in 
 - **Continuous terminal wall** — sessions fill one grid, ordered by waiting, working, idle, then shell; workspace labels stay inside the cards. Auto columns adapt to the window, up to five columns. On a 1536×1024 desktop, the compact layout fits 20 normal cards.
 - **Search and filters** — combine title/workspace/directory search, a workspace selector, and status filters. Shell sessions are hidden by default. Filters change only the displayed cards.
 - **One-click focus** — click a normal card’s title or terminal preview to switch directly to its WezTerm session through the Lua bridge.
-- **Expand in place** — click the separate Expand button on a card to move it to the start of its row and expand it across two columns and two rows. Other terminals keep updating. Status changes do not reorder cards during reading; collapse restores the normal order. On a single-column screen, expansion uses one column.
+- **Expand in place** — click the separate Expand button on a card to move it to the start of its row and expand it across up to three columns and three rows. Other terminals keep updating. Status changes do not reorder cards during reading; collapse restores the normal order. On narrower screens, expansion uses the available one or two columns.
 - **Readable output** — small previews fit the entire terminal screen. Expanded cards use 14px text and native scrolling, following the bottom until you scroll away. Maximize opens a larger reading view; Back or Escape returns to the expanded card.
 - **Explicit actions** — Open in WezTerm uses the existing focus bridge. Approve (send 1) and Send Esc send the same keys as before. Close session still requires two clicks within three seconds. Action controls appear in the expanded and maximized views.
 - **Next waiting** — cycles through waiting sessions in the current filters. The currently expanded session remains open when its status changes; new waiting sessions do not take over the reading view.
@@ -97,9 +97,10 @@ pnpm typecheck
 
 ## Limitations
 
-- Only sees Claude Code and Codex sessions running inside WezTerm panes (not VS Code, web, or other terminals).
+- Only sees Claude Code, Codex, and Pi sessions running inside WezTerm panes (not VS Code, web, or other terminals).
 - Card focus requires the Lua bridge above; the WezTerm CLI alone cannot switch workspaces consistently.
 - Status detection is heuristic — it parses pane titles, attached terminal processes, and selected visible-screen patterns. New Claude Code or Codex UI wording may need a pattern update in `src/status.ts`.
+- Pi is identified by its attached `pi` process, including sessions with custom titles. Its default `Working` spinner near the bottom of the screen maps to working; other screens map to idle. Custom extension indicators and Pi confirmation dialogs are not classified separately.
 - Approve (send 1) sends the literal keystroke `1`. Read the current prompt before acting; waiting status detection is heuristic.
 
 ## License
