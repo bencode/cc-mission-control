@@ -55,7 +55,7 @@ body.disconnected #board { opacity: 0.55; }
 .tile:not(.expanded) { cursor: pointer; }
 .tile:hover { border-color: #586a80; }
 .tile.status-waiting { border-color: #8a6a2e; }
-.tile.expanded { grid-column: span var(--expanded-cols, 2); grid-row: span 2; border-color: var(--working); }
+.tile.expanded { grid-column: span var(--expanded-cols, 3); grid-row: span 3; border-color: var(--working); }
 .tile.expanded.status-waiting { border-color: var(--waiting); }
 .tile.active { box-shadow: 0 0 0 2px var(--current); }
 .tile.active > .tile-header { background: color-mix(in srgb, var(--current) 8%, var(--panel)); }

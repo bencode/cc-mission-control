@@ -9,9 +9,9 @@ type SummarySnapshot = Pick<PaneSnapshot, 'agent' | 'status'>
 
 export const summarizeSessions = (snapshots: Iterable<SummarySnapshot>): SessionSummaryCounts => {
   const counts: SessionSummaryCounts = {
-    working: { codex: 0, claude: 0 },
-    waiting: { codex: 0, claude: 0 },
-    idle: { codex: 0, claude: 0 },
+    working: { codex: 0, claude: 0, pi: 0 },
+    waiting: { codex: 0, claude: 0, pi: 0 },
+    idle: { codex: 0, claude: 0, pi: 0 },
     shell: 0,
   }
   for (const snapshot of snapshots) {
@@ -27,7 +27,7 @@ export const summarizeSessions = (snapshots: Iterable<SummarySnapshot>): Session
 export const STATUS_LABEL: Record<SessionStatus, string> = {
   waiting: 'Waiting', working: 'Working', idle: 'Idle', shell: 'Shell',
 }
-export const AGENT_LABEL: Record<AgentKind, string> = { codex: 'Codex', claude: 'Claude', shell: 'Shell' }
+export const AGENT_LABEL: Record<AgentKind, string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', shell: 'Shell' }
 
 export const updateSessionSummary = (
   root: HTMLElement,
@@ -36,7 +36,7 @@ export const updateSessionSummary = (
   showShells: boolean,
 ): void => {
   const statuses = ['all', 'waiting', 'working', 'idle', 'shell'] as const
-  const total = (status: AgentStatus): number => counts[status].codex + counts[status].claude
+  const total = (status: AgentStatus): number => counts[status].codex + counts[status].claude + counts[status].pi
   statuses.forEach((status) => {
     let button = root.querySelector<HTMLButtonElement>(`[data-status="${status}"]`)
     if (!button) {
@@ -57,7 +57,7 @@ export const updateSessionSummary = (
     button.classList.toggle('zero', number === 0)
     button.setAttribute('aria-pressed', String(status === selected))
     button.title = status === 'all' || status === 'shell' ? ''
-      : `Codex ${counts[status].codex} · Claude ${counts[status].claude}`
+      : `Codex ${counts[status].codex} · Claude ${counts[status].claude} · Pi ${counts[status].pi}`
   })
 }
 

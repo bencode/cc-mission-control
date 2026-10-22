@@ -11,6 +11,7 @@ export type AgentProcessMap = Map<string, Exclude<AgentKind, 'shell'>>
 const AGENT_COMMANDS: Record<string, Exclude<AgentKind, 'shell'>> = {
   claude: 'claude',
   codex: 'codex',
+  pi: 'pi',
 }
 
 export const normalizeTty = (tty: string): string =>

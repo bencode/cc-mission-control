@@ -35,6 +35,8 @@ export const stripAnsi = (text: string): string => text.replace(ANSI_PATTERN, ''
 const WAITING_CURSOR = /❯\s+\d+\./
 const CODEX_WAITING_CURSOR = /^\s*›\s+\d+\./m
 const CODEX_WAITING_FOOTER = /\benter to (?:submit answer|select|confirm)\b/i
+// Pi keeps its title unchanged while running; its default loader is on screen.
+const PI_WORKING_INDICATOR = /^[\s─]*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Working(?:\.\.\.)?(?: \([^\n]* to interrupt\))?[\s─]*$/m
 
 // The live dialog is anchored to the bottom of the pane; a resolved one scrolls
 // up and collapses. Scanning only the tail keeps a stale cursor above from
@@ -77,6 +79,7 @@ export const detectAgent = (
  */
 export const detectStatus = (agent: AgentKind, title: string, screenText: string): SessionStatus => {
   if (agent === 'shell') return 'shell'
+  if (agent === 'pi') return PI_WORKING_INDICATOR.test(tail(screenText)) ? 'working' : 'idle'
 
   if (agent === 'codex') {
     if (isCodexActionRequiredTitle(title) || isCodexWaitingScreen(screenText)) return 'waiting'
